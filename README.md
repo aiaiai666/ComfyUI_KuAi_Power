@@ -1,22 +1,7 @@
 # ComfyUI KuAi Power
 
-[![GitHub](https://img.shields.io/badge/GitHub-kegeai888%2FComfyUI__KuAi__Power-blue?logo=github)](https://github.com/kegeai888/ComfyUI_KuAi_Power)
-
-ComfyUI 节点扩展，提供对 Sora2、Veo3、Grok 视频生成模型、Nano Banana 图像生成以及 AI 脚本生成功能的支持。
-
-> **GitHub 仓库**: [https://github.com/kegeai888/ComfyUI_KuAi_Power](https://github.com/kegeai888/ComfyUI_KuAi_Power)
->
-> **仓库地址**: https://github.com/kegeai888/ComfyUI_KuAi_Power
->
-> **用户使用手册**: [./用户使用手册.md](./用户使用手册.md)
-
-> **API 服务**: [kuai.host](https://api.kuai.host/register?aff=z2C8) | **国内镜像**: [videos.kuai.host](https://videos.kuai.host/) | **国内镜像**: [nbnb.kuai.host](https://nbnb.kuai.host/) | **视频教程**: [Bilibili](https://www.bilibili.com/video/BV1umCjBqEpt/)
-
-> 可配合[本地一键包「CNB钞能力一键包-free」来使用](https://pan.quark.cn/s/987bd66a6197)
-
-`https://pan.quark.cn/s/987bd66a6197 提取码：AJFP`
-
 ## 🚀 快速开始
+- 记得注册api站点需要使用这个：https://ai.kegeai.top/register?aff=78Gs
 
 ### 1. 安装依赖
 ```bash
@@ -143,15 +128,6 @@ NanoBananaMultiTurnChat → "Create a perfume bottle" → "Make it elegant" → 
 ```
 CSVBatchReader (读取 CSV 文件) → NanoBananaBatchProcessor (批量处理) → (自动保存图像和元数据)
 ```
-
-**CSV 模板下载**:
-- [空白模板](./workflows/nanobana_batch_template_blank.csv)
-- [文生图模板](./workflows/nanobana_batch_template_text2image.csv)
-- [图生图模板](./workflows/nanobana_batch_template_image2image.csv)
-- [中文模板](./workflows/nanobana_batch_template_chinese.csv)
-- [模板使用说明](./workflows/CSV_TEMPLATES_README.md)
-
-**详细指南**: [NanoBanana 批量处理使用指南](./NANOBANA_BATCH_GUIDE.md)
 
 ---
 
