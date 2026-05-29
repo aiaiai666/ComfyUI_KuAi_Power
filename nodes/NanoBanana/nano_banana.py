@@ -18,6 +18,14 @@ from ..Sora2.kuai_utils import (
 )
 
 
+NANO_BANANA_MODELS = [
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-3-flash-preview",
+    "gemini-2.5-flash",
+]
+
+
 def pil_to_base64(pil_image: Image.Image, format: str = "PNG") -> str:
     """将 PIL 图像转换为 base64 字符串"""
     buffer = io.BytesIO()
@@ -40,7 +48,7 @@ class NanoBananaAIO:
 
     @classmethod
     def INPUT_TYPES(cls):
-        model_list = ["gemini-3.1-flash-image-preview", "gemini-3-pro-image-preview", "gemini-2.5-flash-image"]
+        model_list = NANO_BANANA_MODELS
         return {
             "required": {
                 "model_name": (model_list, {"default": model_list[0], "tooltip": "选择 Gemini 模型"}),
@@ -60,7 +68,7 @@ class NanoBananaAIO:
                 "image_6": ("IMAGE", {"tooltip": "参考图6"}),
                 "aspect_ratio": (["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"],
                                 {"default": "1:1", "tooltip": "图像宽高比"}),
-                "image_size": (["1K", "2K", "4K"], {"default": "2K", "tooltip": "图像尺寸,只对gemini-3-pro-image-preview起作用"}),
+                "image_size": (["1K", "2K", "4K"], {"default": "2K", "tooltip": "图像尺寸,按模型能力生效"}),
                 "temperature": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.1, "tooltip": "生成温度"}),
                 "api_base": ("STRING", {"default": "https://api.kegeai.top", "tooltip": "API 端点地址"}),
                 "api_key": ("STRING", {"default": "", "tooltip": "API 密钥"}),
@@ -382,7 +390,7 @@ class NanoBananaMultiTurnChat:
 
     @classmethod
     def INPUT_TYPES(cls):
-        model_list = ["gemini-3.1-flash-image-preview", "gemini-3-pro-image-preview", "gemini-2.5-flash-image"]
+        model_list = NANO_BANANA_MODELS
         return {
             "required": {
                 "model_name": (model_list, {"default": model_list[0], "tooltip": "选择 Gemini 模型"}),
@@ -391,7 +399,7 @@ class NanoBananaMultiTurnChat:
                 "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647, "tooltip": "随机种子值，0为随机（INT32范围）"}),
                 "aspect_ratio": (["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"],
                                 {"default": "1:1", "tooltip": "图像宽高比"}),
-                "image_size": (["1K", "2K", "4K"], {"default": "2K", "tooltip": "图像尺寸,只对gemini-3-pro-image-preview起作用"}),
+                "image_size": (["1K", "2K", "4K"], {"default": "2K", "tooltip": "图像尺寸,按模型能力生效"}),
                 "temperature": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.1, "tooltip": "生成温度"}),
             },
             "optional": {

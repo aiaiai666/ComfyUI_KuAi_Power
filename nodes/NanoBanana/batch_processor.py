@@ -124,7 +124,7 @@ class NanoBananaBatchProcessor:
             raise ValueError("提示词 (prompt) 不能为空")
 
         # 可选参数（带默认值）
-        model_name = task.get("model_name", "gemini-3-pro-image-preview").strip()
+        model_name = task.get("model_name", "gemini-3.1-flash-lite").strip()
         system_prompt = task.get("system_prompt", "").strip()
         seed = int(task.get("seed", 0))
         aspect_ratio = task.get("aspect_ratio", "1:1").strip()
