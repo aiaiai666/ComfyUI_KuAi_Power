@@ -25,6 +25,16 @@ $o = COMMAND 2>&1 | Out-String; $o.Substring(0, [Math]::Min($o.Length, 4000))
 
 - 不使用当前环境没有的 `head`。
 
+## Git Push
+- 因网络原因，执行 `git push` 必须使用本机代理端口 `10808`。
+- 默认 push 写法：
+
+```powershell
+git -c http.proxy=http://127.0.0.1:10808 -c https.proxy=http://127.0.0.1:10808 push -u origin master
+```
+
+- 只在用户明确要求时 push。
+
 ## 项目结构
 - `__init__.py`：ComfyUI 插件入口，自动扫描 `nodes/`，合并 `NODE_CLASS_MAPPINGS` 与 `NODE_DISPLAY_NAME_MAPPINGS`，声明 `WEB_DIRECTORY = "./web"`。
 - `nodes/`：节点主目录，按能力或模型分组。
