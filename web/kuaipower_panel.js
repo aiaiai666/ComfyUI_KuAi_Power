@@ -9,6 +9,7 @@ app.registerExtension({
       "Sora2": "🎬 Sora2 视频生成",
       "Veo3": "🚀 Veo3.1 视频生成",
       "Grok": "🤖 Grok 视频生成",
+      "Omni": "🎬 Omni 视频生成",
       "HappyHorse": "🐎 HappyHorse 视频生成",
       "Kling": "🎞️ 可灵视频生成",
       "WAN": "⚡ WAN 视频生成",
