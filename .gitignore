@@ -71,6 +71,7 @@ Thumbs.db
 
 # Local/private files
 AGENTS.md
+!/AGENTS.md
 CLAUDE.md
 todo.md
 cc.sh
