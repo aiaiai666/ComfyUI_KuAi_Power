@@ -157,18 +157,24 @@ def _process_one(row_index: int, row: dict, defaults: dict) -> dict:
     attempts = defaults["retry_count"] + 1
     last_error = ""
 
+    try:
+        image_urls = [
+            _upload_local_image(
+                _resolve_image_path(path),
+                defaults["upload_url"],
+                defaults["upload_format"],
+                defaults["upload_quality"],
+                defaults["upload_timeout"],
+            )
+            for path in image_paths
+        ]
+    except Exception as exc:
+        output["status"] = "失败"
+        output["error_reason"] = str(exc)
+        return output
+
     for attempt in range(1, attempts + 1):
         try:
-            image_urls = [
-                _upload_local_image(
-                    _resolve_image_path(path),
-                    defaults["upload_url"],
-                    defaults["upload_format"],
-                    defaults["upload_quality"],
-                    defaults["upload_timeout"],
-                )
-                for path in image_paths
-            ]
             urls = _post_edit(
                 normalized,
                 image_urls,

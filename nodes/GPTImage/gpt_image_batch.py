@@ -292,6 +292,7 @@ class GPTImage2BatchTextGenerate:
     RETURN_NAMES = ("处理报告", "结果CSV路径", "图片保存目录", "成功数量", "失败数量")
     FUNCTION = "process"
     CATEGORY = "KuAi/GPTImage"
+    OUTPUT_NODE = True
 
     def process(self, csv_file="", csv_path="", api_key="", api_base="https://ai.kegeai.top",
                 save_dir="output/gpt_image2_batch", batch_size=10, request_timeout=1800,
