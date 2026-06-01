@@ -76,6 +76,10 @@ git -c http.proxy=http://127.0.0.1:10808 -c https.proxy=http://127.0.0.1:10808 p
 - 不破坏现有快捷面板、动态 UI、视频预览、实时监控。
 - 改 UI 时先保证节点原始功能不受影响。
 
+## Demo 工作流规则
+- 新增或修改 ComfyUI demo 工作流 JSON 时，顶层 `id` 必须使用合法 UUID，不能使用普通字符串，否则新版 ComfyUI 会报 `Invalid workflow against zod schema: Invalid uuid at "id"`。
+- demo 工作流必须至少有一个 `OUTPUT_NODE = True` 的输出节点，并把目标处理节点输出连接过去，否则执行会报 `Prompt has no outputs`。
+
 ## 批处理与文件规则
 - 批处理节点要保持 CSV 字段兼容。
 - 输出文件、日志文件、下载文件不得默认覆盖用户数据。
