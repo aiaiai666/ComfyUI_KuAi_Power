@@ -1,14 +1,16 @@
 """GPT Image 2 batch image edit node."""
 
 import time
+import io
 import concurrent.futures
+from pathlib import Path
 
 import requests
+from PIL import Image
 
 from ..Sora2.kuai_utils import (
     env_or,
     http_headers_multipart,
-    download_public_url_bytes,
 )
 from .gpt_image import SIZE_MAP, _extract_urls
 from .gpt_image_batch import (
@@ -31,21 +33,68 @@ EDIT_OPTIONAL_DEFAULTS = {
     "background": "auto",
     "moderation": "auto",
 }
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
 
 
 def _collect_row_image_urls(row: dict) -> list:
-    urls = []
+    paths = []
     for i in range(1, EDIT_IMAGE_URL_COUNT + 1):
-        url = str(row.get(f"image_url_{i}") or "").strip()
-        if url:
-            urls.append(url)
-    return urls
+        path = str(row.get(f"image_url_{i}") or "").strip()
+        if path:
+            paths.append(path)
+    return paths
+
+
+def _resolve_image_path(path_text: str) -> Path:
+    path = Path(path_text.strip())
+    if not path.is_absolute():
+        path = _comfy_root() / path
+    if not path.exists():
+        raise FileNotFoundError(f"本地图片不存在: {path}")
+    if not path.is_file():
+        raise RuntimeError(f"本地图片路径不是文件: {path}")
+    if path.suffix.lower() not in IMAGE_EXTS:
+        raise RuntimeError(f"不支持的图片格式: {path}")
+    return path
+
+
+def _upload_local_image(image_path: Path, upload_url: str, fmt: str, quality: int, timeout: int) -> str:
+    pil = Image.open(image_path)
+    if pil.mode not in ("RGB", "RGBA"):
+        pil = pil.convert("RGB")
+    if fmt == "jpeg" and pil.mode == "RGBA":
+        bg = Image.new("RGB", pil.size, (255, 255, 255))
+        bg.paste(pil, mask=pil.split()[3])
+        pil = bg
+
+    buf = io.BytesIO()
+    save_fmt = "JPEG" if fmt == "jpeg" else fmt.upper()
+    pil.save(buf, format=save_fmt, quality=quality)
+    buf.seek(0)
+
+    ext = "jpg" if fmt == "jpeg" else fmt
+    files = {"file": (f"{image_path.stem}.{ext}", buf, f"image/{fmt}")}
+    resp = requests.post(
+        upload_url,
+        headers=http_headers_multipart(),
+        files=files,
+        timeout=timeout,
+    )
+    if resp.status_code >= 400:
+        raise RuntimeError(f"上传失败 HTTP {resp.status_code}: {resp.text[:500]}")
+    data = resp.json()
+    url = data.get("url", "")
+    if not url:
+        raise RuntimeError(f"上传响应缺少 url: {resp.text[:500]}")
+    return url
 
 
 def _post_edit(row: dict, image_urls: list, api_key: str, api_base: str, timeout: int) -> list:
     files = []
     for i, url in enumerate(image_urls):
-        content = download_public_url_bytes(url, timeout=timeout, label=f"image_url_{i + 1}")
+        resp = requests.get(url, timeout=timeout)
+        resp.raise_for_status()
+        content = resp.content
         files.append(("image[]", (f"image_{i}.png", content, "image/png")))
 
     form_data = {
@@ -86,10 +135,10 @@ def _process_one(row_index: int, row: dict, defaults: dict) -> dict:
         output["error_reason"] = f"CSV 缺少必填参数: {', '.join(missing)}"
         return output
 
-    image_urls = _collect_row_image_urls(row)
-    if not image_urls:
+    image_paths = _collect_row_image_urls(row)
+    if not image_paths:
         output["status"] = "失败"
-        output["error_reason"] = "至少需要填写 image_url_1 到 image_url_16 中的一列"
+        output["error_reason"] = "至少需要填写 image_url_1 到 image_url_16 中的一列本地图片路径"
         return output
 
     for name, default in EDIT_OPTIONAL_DEFAULTS.items():
@@ -110,6 +159,16 @@ def _process_one(row_index: int, row: dict, defaults: dict) -> dict:
 
     for attempt in range(1, attempts + 1):
         try:
+            image_urls = [
+                _upload_local_image(
+                    _resolve_image_path(path),
+                    defaults["upload_url"],
+                    defaults["upload_format"],
+                    defaults["upload_quality"],
+                    defaults["upload_timeout"],
+                )
+                for path in image_paths
+            ]
             urls = _post_edit(
                 normalized,
                 image_urls,
@@ -164,6 +223,10 @@ class GPTImage2BatchEdit:
                 "api_base": ("STRING", {"default": "https://ai.kegeai.top"}),
                 "save_dir": ("STRING", {"default": "output/gpt_image2_edit_batch"}),
                 "batch_size": ("INT", {"default": 10, "min": 1, "max": 20}),
+                "upload_url": ("STRING", {"default": "https://imageproxy.zhongzhuan.chat/api/upload"}),
+                "upload_format": (["jpeg", "png", "webp"], {"default": "jpeg"}),
+                "upload_quality": ("INT", {"default": 90, "min": 1, "max": 100}),
+                "upload_timeout": ("INT", {"default": 30, "min": 5, "max": 300}),
                 "request_timeout": ("INT", {"default": 1800, "min": 30, "max": 9999}),
                 "download_timeout": ("INT", {"default": 1800, "min": 30, "max": 9999}),
                 "retry_count": ("INT", {"default": 3, "min": 0, "max": 10}),
@@ -180,6 +243,10 @@ class GPTImage2BatchEdit:
             "api_base": "API地址",
             "save_dir": "图片保存目录",
             "batch_size": "并发数",
+            "upload_url": "图床地址",
+            "upload_format": "上传格式",
+            "upload_quality": "上传质量",
+            "upload_timeout": "上传超时",
             "request_timeout": "请求超时",
             "download_timeout": "下载超时",
             "retry_count": "重试次数",
@@ -192,8 +259,11 @@ class GPTImage2BatchEdit:
     CATEGORY = "KuAi/GPTImage"
 
     def process(self, csv_file="", csv_path="", api_key="", api_base="https://ai.kegeai.top",
-                save_dir="output/gpt_image2_edit_batch", batch_size=10, request_timeout=1800,
-                download_timeout=1800, retry_count=3, retry_interval=3):
+                save_dir="output/gpt_image2_edit_batch", batch_size=10,
+                upload_url="https://imageproxy.zhongzhuan.chat/api/upload",
+                upload_format="jpeg", upload_quality=90, upload_timeout=30,
+                request_timeout=1800, download_timeout=1800,
+                retry_count=3, retry_interval=3):
         api_key = env_or(api_key, "KUAI_API_KEY")
         if not api_key:
             raise RuntimeError("API Key 未配置，请填写 api_key 或设置 KUAI_API_KEY")
@@ -205,6 +275,10 @@ class GPTImage2BatchEdit:
             "api_key": api_key,
             "api_base": api_base,
             "save_dir": save_dir,
+            "upload_url": upload_url,
+            "upload_format": upload_format,
+            "upload_quality": upload_quality,
+            "upload_timeout": upload_timeout,
             "request_timeout": request_timeout,
             "download_timeout": download_timeout,
             "retry_count": retry_count,
