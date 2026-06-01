@@ -9,7 +9,7 @@ from pathlib import Path
 import requests
 
 from ..Sora2.kuai_utils import env_or, http_headers_auth_only
-from .gpt_image import MODELS, SIZES, SIZE_MAP, _extract_urls
+from .gpt_image import SIZE_MAP, _extract_urls
 
 try:
     import folder_paths
@@ -185,9 +185,14 @@ def _process_one(row_index: int, row: dict, defaults: dict) -> dict:
         output["error_reason"] = "prompt 不能为空"
         return output
 
-    model = str(row.get("model") or defaults["model"]).strip() or defaults["model"]
-    size = str(row.get("size") or defaults["size"]).strip() or defaults["size"]
-    n_raw = str(row.get("n") or defaults["n"]).strip()
+    model = str(row.get("model") or "").strip()
+    size = str(row.get("size") or "").strip()
+    n_raw = str(row.get("n") or "").strip()
+    missing = [name for name, value in (("model", model), ("size", size), ("n", n_raw)) if not value]
+    if missing:
+        output["status"] = "失败"
+        output["error_reason"] = f"CSV 缺少必填参数: {', '.join(missing)}"
+        return output
     api_base = defaults["api_base"]
     timeout = int(str(row.get("timeout") or defaults["request_timeout"]).strip())
     output_prefix = str(row.get("output_prefix") or f"gpt_image2_{row_index}").strip() or f"gpt_image2_{row_index}"
@@ -250,9 +255,6 @@ class GPTImage2BatchTextGenerate:
                 }),
                 "csv_path": ("STRING", {"default": "", "tooltip": "CSV 完整路径"}),
                 "api_key": ("STRING", {"default": "", "tooltip": "留空使用 KUAI_API_KEY"}),
-                "default_model": (MODELS, {"default": "gpt-image-2"}),
-                "default_size": (SIZES, {"default": SIZES[0]}),
-                "default_n": ("INT", {"default": 1, "min": 1, "max": 10}),
                 "api_base": ("STRING", {"default": "https://ai.kegeai.top"}),
                 "save_dir": ("STRING", {"default": "output/gpt_image2_batch"}),
                 "batch_size": ("INT", {"default": 10, "min": 1, "max": 20}),
@@ -269,9 +271,6 @@ class GPTImage2BatchTextGenerate:
             "csv_file": "CSV文件",
             "csv_path": "CSV路径",
             "api_key": "API密钥",
-            "default_model": "默认模型",
-            "default_size": "默认尺寸",
-            "default_n": "默认生成数量",
             "api_base": "API地址",
             "save_dir": "图片保存目录",
             "batch_size": "并发数",
@@ -286,8 +285,7 @@ class GPTImage2BatchTextGenerate:
     FUNCTION = "process"
     CATEGORY = "KuAi/GPTImage"
 
-    def process(self, csv_file="", csv_path="", api_key="", default_model="gpt-image-2",
-                default_size="auto", default_n=1, api_base="https://ai.kegeai.top",
+    def process(self, csv_file="", csv_path="", api_key="", api_base="https://ai.kegeai.top",
                 save_dir="output/gpt_image2_batch", batch_size=10, request_timeout=1800,
                 download_timeout=1800, retry_count=3, retry_interval=3):
         api_key = env_or(api_key, "KUAI_API_KEY")
@@ -299,9 +297,6 @@ class GPTImage2BatchTextGenerate:
         total = len(rows)
         defaults = {
             "api_key": api_key,
-            "model": default_model,
-            "size": default_size,
-            "n": default_n,
             "api_base": api_base,
             "save_dir": save_dir,
             "request_timeout": request_timeout,
