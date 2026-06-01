@@ -39,7 +39,7 @@ IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
 def _collect_row_image_urls(row: dict) -> list:
     paths = []
     for i in range(1, EDIT_IMAGE_URL_COUNT + 1):
-        path = str(row.get(f"image_url_{i}") or "").strip()
+        path = str(row.get(f"image_{i}") or "").strip()
         if path:
             paths.append(path)
     return paths
@@ -138,7 +138,7 @@ def _process_one(row_index: int, row: dict, defaults: dict) -> dict:
     image_paths = _collect_row_image_urls(row)
     if not image_paths:
         output["status"] = "失败"
-        output["error_reason"] = "至少需要填写 image_url_1 到 image_url_16 中的一列本地图片路径"
+        output["error_reason"] = "至少需要填写 image_1 到 image_16 中的一列本地图片路径"
         return output
 
     for name, default in EDIT_OPTIONAL_DEFAULTS.items():
