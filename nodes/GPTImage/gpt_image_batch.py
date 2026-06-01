@@ -2,7 +2,6 @@
 
 import csv
 import hashlib
-import io
 import time
 import concurrent.futures
 from pathlib import Path
@@ -89,11 +88,6 @@ def _read_csv(path: Path) -> tuple[list, list]:
     if not rows:
         raise ValueError("CSV 文件没有有效任务")
     return reader.fieldnames, rows
-
-
-def _result_csv_path(source: Path) -> Path:
-    stamp = time.strftime("%Y%m%d_%H%M%S")
-    return source.with_name(f"{source.stem}_result_{stamp}{source.suffix}")
 
 
 def _write_result_csv(path: Path, fieldnames: list, rows: list) -> None:
@@ -194,7 +188,7 @@ def _process_one(row_index: int, row: dict, defaults: dict) -> dict:
     model = str(row.get("model") or defaults["model"]).strip() or defaults["model"]
     size = str(row.get("size") or defaults["size"]).strip() or defaults["size"]
     n_raw = str(row.get("n") or defaults["n"]).strip()
-    api_base = str(row.get("api_base") or defaults["api_base"]).strip() or defaults["api_base"]
+    api_base = defaults["api_base"]
     timeout = int(str(row.get("timeout") or defaults["request_timeout"]).strip())
     output_prefix = str(row.get("output_prefix") or f"gpt_image2_{row_index}").strip() or f"gpt_image2_{row_index}"
 
@@ -261,7 +255,7 @@ class GPTImage2BatchTextGenerate:
                 "default_n": ("INT", {"default": 1, "min": 1, "max": 10}),
                 "api_base": ("STRING", {"default": "https://ai.kegeai.top"}),
                 "save_dir": ("STRING", {"default": "output/gpt_image2_batch"}),
-                "batch_size": ("INT", {"default": 5, "min": 1, "max": 20}),
+                "batch_size": ("INT", {"default": 10, "min": 1, "max": 20}),
                 "request_timeout": ("INT", {"default": 1800, "min": 30, "max": 9999}),
                 "download_timeout": ("INT", {"default": 1800, "min": 30, "max": 9999}),
                 "retry_count": ("INT", {"default": 3, "min": 0, "max": 10}),
@@ -294,7 +288,7 @@ class GPTImage2BatchTextGenerate:
 
     def process(self, csv_file="", csv_path="", api_key="", default_model="gpt-image-2",
                 default_size="auto", default_n=1, api_base="https://ai.kegeai.top",
-                save_dir="output/gpt_image2_batch", batch_size=5, request_timeout=1800,
+                save_dir="output/gpt_image2_batch", batch_size=10, request_timeout=1800,
                 download_timeout=1800, retry_count=3, retry_interval=3):
         api_key = env_or(api_key, "KUAI_API_KEY")
         if not api_key:
@@ -329,7 +323,7 @@ class GPTImage2BatchTextGenerate:
                     results.append(future.result())
 
         results.sort(key=lambda item: item.get("_row_number", 0))
-        result_path = _result_csv_path(source)
+        result_path = source
         _write_result_csv(result_path, fieldnames, results)
 
         success = [row for row in results if row.get("status") == "成功"]
