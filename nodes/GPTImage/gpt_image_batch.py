@@ -74,17 +74,25 @@ def _resolve_csv_path(csv_file: str, csv_path: str) -> Path:
 
 
 def _read_csv(path: Path) -> tuple[list, list]:
-    with path.open("r", encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        if not reader.fieldnames:
-            raise ValueError("CSV 文件为空或缺少表头")
-        rows = []
-        for row_number, row in enumerate(reader, start=2):
-            if not any(row.values()):
-                continue
-            cleaned = {k: (v.strip() if isinstance(v, str) else v) for k, v in row.items()}
-            cleaned["_row_number"] = row_number
-            rows.append(cleaned)
+    last_error = None
+    for encoding in ("utf-8-sig", "gb18030", "gbk"):
+        try:
+            with path.open("r", encoding=encoding, newline="") as f:
+                reader = csv.DictReader(f)
+                if not reader.fieldnames:
+                    raise ValueError("CSV 文件为空或缺少表头")
+                rows = []
+                for row_number, row in enumerate(reader, start=2):
+                    if not any(row.values()):
+                        continue
+                    cleaned = {k: (v.strip() if isinstance(v, str) else v) for k, v in row.items()}
+                    cleaned["_row_number"] = row_number
+                    rows.append(cleaned)
+            break
+        except UnicodeDecodeError as exc:
+            last_error = exc
+    else:
+        raise RuntimeError(f"CSV 编码无法识别，请另存为 UTF-8 或 GBK: {last_error}")
     if not rows:
         raise ValueError("CSV 文件没有有效任务")
     return reader.fieldnames, rows
