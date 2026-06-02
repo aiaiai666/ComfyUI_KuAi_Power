@@ -1,12 +1,11 @@
 """GPT Image 2 batch text-to-image node."""
 
-import csv
 import hashlib
 import time
 import concurrent.futures
 import re
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from datetime import datetime
 from xml.etree import ElementTree as ET
 from xml.sax.saxutils import escape
@@ -23,30 +22,39 @@ except ImportError:
     HAS_FOLDER_PATHS = False
 
 
-RESULT_COLUMNS = ["status", "error_reason", "image_urls", "local_paths", "file_names"]
 TEXT_EXCEL_RESULT_HEADERS = ["提示词", "尺寸", "状态", "失败原因", "保存路径", "文件名"]
 RETRY_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
+MAX_BATCH_SIZE = 999
+MAX_RUNTIME_WORKERS = 128
+MAX_DOWNLOAD_BYTES = 80 * 1024 * 1024
 
 
 def _comfy_root() -> Path:
     return Path(__file__).resolve().parents[4]
 
 
-def _input_csv_files() -> list:
-    if not HAS_FOLDER_PATHS:
-        return [""]
+def _coerce_batch_size(batch_size, total: int) -> int:
     try:
-        input_dir = Path(folder_paths.get_input_directory())
-        if not input_dir.exists():
-            return [""]
-        files = [
-            str(path.relative_to(input_dir))
-            for path in input_dir.rglob("*")
-            if path.is_file() and path.suffix.lower() == ".csv"
-        ]
-        return sorted(files) or [""]
-    except Exception:
-        return [""]
+        value = int(batch_size)
+    except (TypeError, ValueError):
+        raise ValueError(f"并发数不是有效数字: {batch_size}")
+    value = max(1, min(MAX_BATCH_SIZE, value))
+    return min(value, max(1, total))
+
+
+def _batch_worker_count(batch_size: int, batch_length: int) -> int:
+    return max(1, min(batch_size, batch_length, MAX_RUNTIME_WORKERS))
+
+
+def _safe_output_dir(save_dir: str) -> Path:
+    if not str(save_dir or "").strip():
+        raise ValueError("图片保存目录不能为空")
+    root = _comfy_root().resolve()
+    target = (root / str(save_dir or "")).resolve()
+    if target == root or root not in target.parents:
+        raise ValueError(f"图片保存目录必须在 ComfyUI 目录内: {save_dir}")
+    target.mkdir(parents=True, exist_ok=True)
+    return target
 
 
 def _input_excel_files() -> list:
@@ -64,37 +72,6 @@ def _input_excel_files() -> list:
         return sorted(files) or [""]
     except Exception:
         return [""]
-
-
-def _resolve_csv_path(csv_file: str, csv_path: str) -> Path:
-    csv_file = str(csv_file or "").strip()
-    csv_path = str(csv_path or "").strip()
-
-    if csv_file:
-        if not HAS_FOLDER_PATHS:
-            raise RuntimeError("folder_paths 不可用，请使用 csv_path")
-        input_dir = Path(folder_paths.get_input_directory())
-        direct = input_dir / csv_file
-        if direct.exists():
-            return direct
-        filename = Path(csv_file).name
-        for path in input_dir.rglob(filename):
-            if path.is_file() and path.suffix.lower() == ".csv":
-                return path
-        raise FileNotFoundError(f"CSV 文件不存在: {csv_file}")
-
-    if csv_path:
-        path = Path(csv_path)
-        if not path.is_absolute() and HAS_FOLDER_PATHS:
-            candidate = Path(folder_paths.get_input_directory()) / path
-            if candidate.exists():
-                path = candidate
-        if not path.exists():
-            raise FileNotFoundError(f"CSV 文件不存在: {path}")
-        return path
-
-    raise ValueError("请选择 CSV 文件或填写 CSV 路径")
-
 
 def _resolve_excel_path(excel_file: str, excel_path: str) -> Path:
     excel_file = str(excel_file or "").strip()
@@ -155,6 +132,30 @@ def _xlsx_shared_strings(zf: zipfile.ZipFile) -> list:
     return strings
 
 
+def _first_worksheet_name(zf: zipfile.ZipFile) -> str:
+    ns = {
+        "m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+        "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+        "rel": "http://schemas.openxmlformats.org/package/2006/relationships",
+    }
+    workbook = ET.fromstring(zf.read("xl/workbook.xml"))
+    sheet = workbook.find(".//m:sheets/m:sheet", ns)
+    if sheet is None:
+        raise ValueError("Excel 文件没有工作表")
+    rel_id = sheet.attrib.get(f"{{{ns['r']}}}id")
+    if not rel_id:
+        raise ValueError("Excel 工作表缺少关系 ID")
+
+    rels = ET.fromstring(zf.read("xl/_rels/workbook.xml.rels"))
+    for rel in rels.findall("rel:Relationship", ns):
+        if rel.attrib.get("Id") == rel_id:
+            target = rel.attrib.get("Target", "")
+            if target.startswith("/"):
+                return target.lstrip("/")
+            return str(PurePosixPath("xl") / target)
+    raise ValueError("Excel 工作表关系不存在")
+
+
 def _cell_text(cell: ET.Element, shared_strings: list) -> str:
     ns = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
     cell_type = cell.attrib.get("t", "")
@@ -175,7 +176,8 @@ def _cell_text(cell: ET.Element, shared_strings: list) -> str:
 def _read_excel_records(path: Path) -> tuple[list, list]:
     with zipfile.ZipFile(path) as zf:
         shared_strings = _xlsx_shared_strings(zf)
-        root = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+        worksheet_name = _first_worksheet_name(zf)
+        root = ET.fromstring(zf.read(worksheet_name))
     ns = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
     table = []
     for row in root.findall(".//m:sheetData/m:row", ns):
@@ -264,63 +266,43 @@ def _write_simple_xlsx(path: Path, headers: list, rows: list) -> None:
 
 
 def _result_excel_path(source: Path) -> Path:
-    result = source.with_name(f"{source.stem}_结果.xlsx")
-    if not result.exists():
-        return result
-    for index in range(1, 1000):
-        result = source.with_name(f"{source.stem}_结果_{index}.xlsx")
-        if not result.exists():
+    candidates = [source.with_name(f"{source.stem}_结果.xlsx")]
+    candidates.extend(source.with_name(f"{source.stem}_结果_{index}.xlsx") for index in range(1, 1000))
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    candidates.append(source.with_name(f"{source.stem}_结果_{stamp}.xlsx"))
+    for result in candidates:
+        try:
+            with result.open("xb"):
+                pass
             return result
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return source.with_name(f"{source.stem}_结果_{stamp}.xlsx")
+        except FileExistsError:
+            continue
+    raise RuntimeError("无法创建结果 Excel 文件")
 
 
 def _text_result_path(source: Path) -> Path:
     return _result_excel_path(source)
 
 
-def _read_csv(path: Path) -> tuple[list, list]:
-    last_error = None
-    for encoding in ("utf-8-sig", "gb18030", "gbk"):
-        try:
-            with path.open("r", encoding=encoding, newline="") as f:
-                reader = csv.DictReader(f)
-                if not reader.fieldnames:
-                    raise ValueError("CSV 文件为空或缺少表头")
-                rows = []
-                for row_number, row in enumerate(reader, start=2):
-                    if not any(row.values()):
-                        continue
-                    cleaned = {k: (v.strip() if isinstance(v, str) else v) for k, v in row.items()}
-                    cleaned["_row_number"] = row_number
-                    rows.append(cleaned)
-            break
-        except UnicodeDecodeError as exc:
-            last_error = exc
-    else:
-        raise RuntimeError(f"CSV 编码无法识别，请另存为 UTF-8 或 GBK: {last_error}")
-    if not rows:
-        raise ValueError("CSV 文件没有有效任务")
-    return reader.fieldnames, rows
-
-
-def _write_result_csv(path: Path, fieldnames: list, rows: list) -> None:
-    output_fields = [name for name in fieldnames if name != "_row_number"]
-    for name in RESULT_COLUMNS:
-        if name not in output_fields:
-            output_fields.append(name)
-
-    with path.open("w", encoding="utf-8-sig", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=output_fields, extrasaction="ignore")
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({k: v for k, v in row.items() if k != "_row_number"})
+def _download_url_bytes(url: str, timeout: int, max_bytes: int = MAX_DOWNLOAD_BYTES) -> tuple[bytes, str]:
+    with requests.get(url, timeout=timeout, stream=True) as resp:
+        resp.raise_for_status()
+        content_type = resp.headers.get("content-type", "").lower()
+        chunks = []
+        total = 0
+        for chunk in resp.iter_content(chunk_size=1024 * 256):
+            if not chunk:
+                continue
+            total += len(chunk)
+            if total > max_bytes:
+                raise RuntimeError(f"下载内容超过限制: {max_bytes} bytes")
+            chunks.append(chunk)
+    return b"".join(chunks), content_type
 
 
 def _download_image(url: str, save_dir: str, prefix: str, image_index: int, timeout: int) -> tuple[str, str]:
     root = _comfy_root()
-    out_dir = root / save_dir
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = _safe_output_dir(save_dir)
 
     if url.startswith("data:"):
         import base64
@@ -329,10 +311,7 @@ def _download_image(url: str, save_dir: str, prefix: str, image_index: int, time
         ext = "png"
         digest_source = b64[:128]
     else:
-        resp = requests.get(url, timeout=timeout)
-        resp.raise_for_status()
-        content = resp.content
-        content_type = resp.headers.get("content-type", "").lower()
+        content, content_type = _download_url_bytes(url, timeout)
         if "jpeg" in content_type or "jpg" in content_type:
             ext = "jpg"
         elif "webp" in content_type:
@@ -388,70 +367,6 @@ def _post_generation(payload: dict, api_key: str, api_base: str, timeout: int) -
         err.response = resp
         raise err
     return _extract_urls(resp.json())
-
-
-def _process_one(row_index: int, row: dict, defaults: dict) -> dict:
-    output = dict(row)
-    output.update({name: "" for name in RESULT_COLUMNS})
-    prompt = str(row.get("prompt") or "").strip()
-    if not prompt:
-        output["status"] = "失败"
-        output["error_reason"] = "prompt 不能为空"
-        return output
-
-    model = str(row.get("model") or "").strip()
-    size = str(row.get("size") or "").strip()
-    n_raw = str(row.get("n") or "").strip()
-    missing = [name for name, value in (("model", model), ("size", size), ("n", n_raw)) if not value]
-    if missing:
-        output["status"] = "失败"
-        output["error_reason"] = f"CSV 缺少必填参数: {', '.join(missing)}"
-        return output
-    api_base = defaults["api_base"]
-    timeout = int(str(row.get("timeout") or defaults["request_timeout"]).strip())
-    output_prefix = str(row.get("output_prefix") or f"gpt_image2_{row_index}").strip() or f"gpt_image2_{row_index}"
-
-    try:
-        n = max(1, min(10, int(n_raw)))
-    except ValueError:
-        output["status"] = "失败"
-        output["error_reason"] = f"n 不是有效数字: {n_raw}"
-        return output
-
-    payload = {"model": model, "prompt": prompt, "n": n, "size": SIZE_MAP.get(size, size)}
-    attempts = defaults["retry_count"] + 1
-    last_error = ""
-
-    for attempt in range(1, attempts + 1):
-        try:
-            urls = _post_generation(payload, defaults["api_key"], api_base, timeout)
-            local_paths = []
-            file_names = []
-            for image_index, url in enumerate(urls, start=1):
-                local_path, filename = _download_image(
-                    url,
-                    defaults["save_dir"],
-                    output_prefix,
-                    image_index,
-                    defaults["download_timeout"],
-                )
-                local_paths.append(local_path)
-                file_names.append(filename)
-
-            output["status"] = "成功"
-            output["image_urls"] = "\n".join(urls)
-            output["local_paths"] = "\n".join(local_paths)
-            output["file_names"] = "\n".join(file_names)
-            return output
-        except Exception as exc:
-            last_error = str(exc)
-            if attempt >= attempts or not _is_retryable(exc):
-                break
-            time.sleep(defaults["retry_interval"])
-
-    output["status"] = "失败"
-    output["error_reason"] = last_error
-    return output
 
 
 def _process_text_excel_row(row_index: int, row: dict, defaults: dict) -> dict:
@@ -565,6 +480,8 @@ class GPTImage2BatchTextGenerate:
         source = _resolve_excel_path(excel_file, excel_path)
         rows = _read_text_excel(source)
         total = len(rows)
+        batch_size = _coerce_batch_size(batch_size, total)
+        abs_save_dir = str(_safe_output_dir(save_dir))
         defaults = {
             "api_key": api_key,
             "api_base": api_base,
@@ -575,11 +492,13 @@ class GPTImage2BatchTextGenerate:
             "retry_interval": retry_interval,
         }
 
-        print(f"[GPTImage2Batch] 开始处理 {total} 条任务，并发数 {batch_size}")
+        print(f"[GPTImage2Batch] 开始处理 {total} 条任务，并发设置 {batch_size}")
         results = []
         for batch_start in range(0, total, batch_size):
             batch = rows[batch_start: batch_start + batch_size]
-            with concurrent.futures.ThreadPoolExecutor(max_workers=len(batch)) as executor:
+            worker_count = _batch_worker_count(batch_size, len(batch))
+            print(f"[GPTImage2Batch] 当前批次 {len(batch)} 条，实际并发 {worker_count}")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
                 future_map = {
                     executor.submit(_process_text_excel_row, batch_start + local_i + 1, row, defaults): batch_start + local_i + 1
                     for local_i, row in enumerate(batch)
@@ -597,7 +516,6 @@ class GPTImage2BatchTextGenerate:
 
         success = [row for row in results if row.get("状态") == "成功"]
         failed = [row for row in results if row.get("状态") != "成功"]
-        abs_save_dir = str(_comfy_root() / save_dir)
         lines = [
             "GPT-Image2批量文生图完成",
             f"总计: {total}",

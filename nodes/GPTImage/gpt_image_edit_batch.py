@@ -14,21 +14,27 @@ from ..Sora2.kuai_utils import (
 )
 from .gpt_image import EDIT_MODELS, FORMATS, QUALITY_OPTIONS, SIZE_MAP, _extract_urls
 from .gpt_image_batch import (
+    MAX_DOWNLOAD_BYTES,
     _download_image,
+    _download_url_bytes,
     _error_text,
     _input_excel_files,
     _is_retryable,
+    _batch_worker_count,
+    _coerce_batch_size,
     _read_excel_records,
     _resolve_excel_path,
     _result_excel_path,
+    _safe_output_dir,
     _write_simple_xlsx,
-    _comfy_root,
 )
 
 EDIT_IMAGE_URL_COUNT = 16
 EDIT_IMAGE_COLUMNS = [f"image_{i}" for i in range(1, EDIT_IMAGE_URL_COUNT + 1)]
 EDIT_RESULT_HEADERS = ["提示词", "尺寸", *EDIT_IMAGE_COLUMNS, "状态", "失败原因", "保存路径", "文件名"]
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
+MAX_UPLOAD_PIXELS = 64_000_000
+Image.MAX_IMAGE_PIXELS = MAX_UPLOAD_PIXELS
 
 
 def _collect_row_image_urls(row: dict) -> list:
@@ -74,7 +80,11 @@ def _resolve_image_path(path_text: str) -> Path:
 
 
 def _upload_local_image(image_path: Path, upload_url: str, fmt: str, quality: int, timeout: int) -> str:
-    pil = Image.open(image_path)
+    with Image.open(image_path) as source:
+        source.load()
+        if source.width * source.height > MAX_UPLOAD_PIXELS:
+            raise RuntimeError(f"图片尺寸超过限制: {image_path}")
+        pil = source.copy()
     if pil.mode not in ("RGB", "RGBA"):
         pil = pil.convert("RGB")
     if fmt == "jpeg" and pil.mode == "RGBA":
@@ -84,7 +94,10 @@ def _upload_local_image(image_path: Path, upload_url: str, fmt: str, quality: in
 
     buf = io.BytesIO()
     save_fmt = "JPEG" if fmt == "jpeg" else fmt.upper()
-    pil.save(buf, format=save_fmt, quality=quality)
+    try:
+        pil.save(buf, format=save_fmt, quality=quality)
+    finally:
+        pil.close()
     buf.seek(0)
 
     ext = "jpg" if fmt == "jpeg" else fmt
@@ -107,9 +120,7 @@ def _upload_local_image(image_path: Path, upload_url: str, fmt: str, quality: in
 def _post_edit(row: dict, image_urls: list, api_key: str, api_base: str, timeout: int) -> list:
     files = []
     for i, url in enumerate(image_urls):
-        resp = requests.get(url, timeout=timeout)
-        resp.raise_for_status()
-        content = resp.content
+        content, _content_type = _download_url_bytes(url, timeout, MAX_DOWNLOAD_BYTES)
         files.append(("image[]", (f"image_{i}.png", content, "image/png")))
 
     form_data = {
@@ -315,6 +326,8 @@ class GPTImage2BatchEdit:
         source = _resolve_excel_path(excel_file, excel_path)
         rows = _read_edit_excel(source)
         total = len(rows)
+        batch_size = _coerce_batch_size(batch_size, total)
+        abs_save_dir = str(_safe_output_dir(save_dir))
         try:
             n = max(1, min(10, int(n)))
         except ValueError:
@@ -339,11 +352,13 @@ class GPTImage2BatchEdit:
             "retry_interval": retry_interval,
         }
 
-        print(f"[GPTImage2BatchEdit] 开始处理 {total} 条任务，并发数 {batch_size}")
+        print(f"[GPTImage2BatchEdit] 开始处理 {total} 条任务，并发设置 {batch_size}")
         results = []
         for batch_start in range(0, total, batch_size):
             batch = rows[batch_start: batch_start + batch_size]
-            with concurrent.futures.ThreadPoolExecutor(max_workers=len(batch)) as executor:
+            worker_count = _batch_worker_count(batch_size, len(batch))
+            print(f"[GPTImage2BatchEdit] 当前批次 {len(batch)} 条，实际并发 {worker_count}")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
                 future_map = {
                     executor.submit(_process_one, batch_start + local_i + 1, row, defaults): batch_start + local_i + 1
                     for local_i, row in enumerate(batch)
@@ -361,7 +376,6 @@ class GPTImage2BatchEdit:
 
         success = [row for row in results if row.get("状态") == "成功"]
         failed = [row for row in results if row.get("状态") != "成功"]
-        abs_save_dir = str(_comfy_root() / save_dir)
         lines = [
             "GPT-Image2批量编辑图片完成",
             f"总计: {total}",
