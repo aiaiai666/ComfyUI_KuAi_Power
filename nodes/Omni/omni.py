@@ -1,6 +1,7 @@
 """Omni 视频生成节点"""
 
 import json
+import re
 import time
 
 import requests
@@ -18,8 +19,14 @@ from ..Sora2.kuai_utils import (
 OMNI_SUCCESS_STATUSES = {"completed", "complete", "success", "succeeded", "succeed", "done"}
 OMNI_FAILED_STATUSES = {"failed", "failure", "error", "cancelled", "canceled"}
 OMNI_DEFAULT_API_BASE = "https://ai.kegeai.top"
-OMNI_DEFAULT_CREATE_MODEL = "omni-flash-components"
+OMNI_DEFAULT_CREATE_MODEL = "omni-flash"
 OMNI_DEFAULT_QUERY_MODEL = "omni-flash"
+OMNI_EDIT_MODEL = "omni-flash-edit"
+OMNI_MODEL_CHOICES = [OMNI_DEFAULT_CREATE_MODEL, OMNI_EDIT_MODEL]
+OMNI_GENERATION_TYPES = ["1", "2", "3", "4"]
+OMNI_ASPECT_RATIOS = ["9:16", "16:9"]
+OMNI_SECONDS_PATTERN = re.compile(r"^[1-9][0-9]*$")
+OMNI_SIZE_PATTERN = re.compile(r"^[1-9][0-9]{1,4}x[1-9][0-9]{1,4}$")
 
 
 def _status_key(status):
@@ -54,13 +61,10 @@ def _query_model_from_task_id(task_id):
 
 
 def _query_model_from_create_model(model, task_id=""):
-    from_task_id = _query_model_from_task_id(task_id)
-    if from_task_id != OMNI_DEFAULT_QUERY_MODEL or ":" in str(task_id or ""):
-        return from_task_id
     clean = str(model or "").strip()
     if clean.endswith("-components"):
         return clean[:-len("-components")]
-    return clean or OMNI_DEFAULT_QUERY_MODEL
+    return clean or _query_model_from_task_id(task_id)
 
 
 def _extract_video_url(data):
@@ -104,12 +108,94 @@ def _extract_video_url(data):
 
 def _build_images(image_1="", image_2="", image_urls=""):
     images = []
+    seen = set()
     for value in (image_1, image_2):
         clean = str(value or "").strip()
-        if clean:
+        if clean and clean not in seen:
             images.append(clean)
-    images.extend(ensure_list_from_urls(image_urls) if image_urls else [])
+            seen.add(clean)
+    for value in ensure_list_from_urls(image_urls) if image_urls else []:
+        clean = str(value or "").strip()
+        if clean and clean not in seen:
+            images.append(clean)
+            seen.add(clean)
     return images
+
+
+def _normalize_generation_type(value):
+    clean = str(value or "1").strip().split(" ", 1)[0]
+    try:
+        generation_type = int(clean)
+    except Exception:
+        raise RuntimeError("生成类型必须是 1、2、3 或 4")
+    if generation_type not in {1, 2, 3, 4}:
+        raise RuntimeError("生成类型必须是 1、2、3 或 4")
+    return generation_type
+
+
+def _normalize_seconds(seconds):
+    clean = str(seconds or "").strip()
+    if not clean:
+        return ""
+    if not OMNI_SECONDS_PATTERN.match(clean):
+        raise RuntimeError('seconds 必须是正整数字符串，例如 "8"')
+    return clean
+
+
+def _normalize_size(size):
+    clean = str(size or "").strip()
+    if not clean:
+        return ""
+    if not OMNI_SIZE_PATTERN.match(clean):
+        raise RuntimeError("size 必须形如 1280x720")
+    return clean
+
+
+def _validate_create_inputs(effective_model, generation_type, prompt, images, input_reference):
+    if not str(prompt or "").strip():
+        raise RuntimeError("prompt 不能为空")
+    if not str(effective_model or "").strip():
+        raise RuntimeError("model 不能为空")
+    if effective_model == OMNI_EDIT_MODEL or generation_type == 4:
+        raise RuntimeError("Omni-Flash 视频编辑暂未上线，当前仅占位，暂不能创建任务")
+    if str(input_reference or "").strip():
+        raise RuntimeError("input_reference 仅用于 Omni-Flash 视频编辑，当前暂未上线")
+
+    image_count = len(images)
+    if generation_type == 1 and image_count:
+        raise RuntimeError("type=1 为文生视频，不能传 images；请改用 type=2 或 type=3")
+    if generation_type == 2 and not 1 <= image_count <= 2:
+        raise RuntimeError("type=2 首尾帧生视频需要 1-2 张图片")
+    if generation_type == 3 and not 1 <= image_count <= 3:
+        raise RuntimeError("type=3 多图生视频需要 1-3 张图片")
+
+
+def _build_create_payload(effective_model, prompt, generation_type, aspect_ratio,
+                          images, enable_upsample, enable_sample, seconds, size):
+    payload = {
+        "model": effective_model,
+        "prompt": str(prompt or "").strip(),
+        "type": generation_type,
+        "enable_upsample": bool(enable_upsample),
+        "enable_sample": bool(enable_sample),
+    }
+
+    clean_size = _normalize_size(size)
+    if clean_size:
+        payload["size"] = clean_size
+    else:
+        clean_aspect_ratio = str(aspect_ratio or "").strip()
+        if clean_aspect_ratio:
+            if clean_aspect_ratio not in OMNI_ASPECT_RATIOS:
+                raise RuntimeError("aspect_ratio 必须是 16:9 或 9:16")
+            payload["aspect_ratio"] = clean_aspect_ratio
+
+    clean_seconds = _normalize_seconds(seconds)
+    if clean_seconds:
+        payload["seconds"] = clean_seconds
+    if images:
+        payload["images"] = images
+    return payload
 
 
 class OmniCreateVideo:
@@ -124,21 +210,29 @@ class OmniCreateVideo:
                     "multiline": True,
                     "tooltip": "视频提示词；图片为空时为文生视频"
                 }),
-                "model": ([OMNI_DEFAULT_CREATE_MODEL, OMNI_DEFAULT_QUERY_MODEL], {
+                "model": (OMNI_MODEL_CHOICES, {
                     "default": OMNI_DEFAULT_CREATE_MODEL,
                     "tooltip": "创建模型名"
                 }),
+                "type": (OMNI_GENERATION_TYPES, {
+                    "default": "1",
+                    "tooltip": "1=文生视频，2=首尾帧生视频，3=多图生视频，4=Omni-Flash 视频编辑占位"
+                }),
                 "aspect_ratio": (["9:16", "16:9"], {
                     "default": "9:16",
-                    "tooltip": "视频宽高比"
+                    "tooltip": "视频宽高比；填写 size 时不发送该参数"
+                }),
+                "seconds": ("STRING", {
+                    "default": "8",
+                    "tooltip": "视频时长（秒），例如 8"
                 }),
                 "enable_upsample": ("BOOLEAN", {
-                    "default": True,
-                    "tooltip": "启用超分"
+                    "default": False,
+                    "tooltip": "升级到 1080p（部分 4K 模型有效）"
                 }),
-                "enhance_prompt": ("BOOLEAN", {
-                    "default": True,
-                    "tooltip": "中文提示词自动优化并翻译"
+                "enable_sample": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Omni-Flash 系列切换 1080p（4K 模型忽略）"
                 }),
             },
             "optional": {
@@ -154,6 +248,14 @@ class OmniCreateVideo:
                     "default": "",
                     "multiline": True,
                     "tooltip": "额外图片 URL，多个用逗号、分号或换行分隔"
+                }),
+                "input_reference": ("STRING", {
+                    "default": "",
+                    "tooltip": "Omni-Flash 视频编辑参考视频 URL 或 dataURI；当前仅占位"
+                }),
+                "size": ("STRING", {
+                    "default": "",
+                    "tooltip": "自定义尺寸，例如 1280x720；填写后不发送 aspect_ratio"
                 }),
                 "custom_model": ("STRING", {
                     "default": "",
@@ -181,12 +283,16 @@ class OmniCreateVideo:
         return {
             "prompt": "提示词",
             "model": "模型",
+            "type": "生成类型",
             "aspect_ratio": "宽高比",
+            "seconds": "时长",
             "enable_upsample": "启用超分",
-            "enhance_prompt": "提示词增强",
+            "enable_sample": "切换1080p",
             "image_1": "首帧图片URL",
             "image_2": "尾帧图片URL",
             "image_urls": "额外图片URL",
+            "input_reference": "编辑参考视频",
+            "size": "自定义尺寸",
             "custom_model": "自定义模型",
             "api_base": "API地址",
             "api_key": "API密钥",
@@ -198,8 +304,8 @@ class OmniCreateVideo:
     FUNCTION = "create"
     CATEGORY = "KuAi/Omni"
 
-    def create(self, prompt, model, aspect_ratio, enable_upsample, enhance_prompt,
-               image_1="", image_2="", image_urls="", custom_model="",
+    def create(self, prompt, model, type, aspect_ratio, seconds, enable_upsample, enable_sample,
+               image_1="", image_2="", image_urls="", input_reference="", size="", custom_model="",
                api_base=OMNI_DEFAULT_API_BASE, api_key="", timeout=1800):
         api_key = env_or(api_key, "KUAI_API_KEY")
         if not api_key:
@@ -207,16 +313,27 @@ class OmniCreateVideo:
 
         api_base = (api_base or OMNI_DEFAULT_API_BASE).rstrip("/")
         effective_model = (custom_model or "").strip() or model
+        generation_type = _normalize_generation_type(type)
         images = _build_images(image_1=image_1, image_2=image_2, image_urls=image_urls)
+        _validate_create_inputs(
+            effective_model=effective_model,
+            generation_type=generation_type,
+            prompt=prompt,
+            images=images,
+            input_reference=input_reference,
+        )
 
-        payload = {
-            "model": effective_model,
-            "aspect_ratio": aspect_ratio,
-            "enable_upsample": bool(enable_upsample),
-            "enhance_prompt": bool(enhance_prompt),
-            "images": images,
-            "prompt": prompt,
-        }
+        payload = _build_create_payload(
+            effective_model=effective_model,
+            prompt=prompt,
+            generation_type=generation_type,
+            aspect_ratio=aspect_ratio,
+            images=images,
+            enable_upsample=enable_upsample,
+            enable_sample=enable_sample,
+            seconds=seconds,
+            size=size,
+        )
 
         try:
             resp = requests.post(
