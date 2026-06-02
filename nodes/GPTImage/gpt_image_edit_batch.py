@@ -12,37 +12,52 @@ from ..Sora2.kuai_utils import (
     env_or,
     http_headers_multipart,
 )
-from .gpt_image import SIZE_MAP, _extract_urls
+from .gpt_image import EDIT_MODELS, FORMATS, QUALITY_OPTIONS, SIZE_MAP, _extract_urls
 from .gpt_image_batch import (
-    RESULT_COLUMNS,
     _download_image,
     _error_text,
-    _input_csv_files,
+    _input_excel_files,
     _is_retryable,
-    _read_csv,
-    _resolve_csv_path,
-    _write_result_csv,
+    _read_excel_records,
+    _resolve_excel_path,
+    _result_excel_path,
+    _write_simple_xlsx,
     _comfy_root,
 )
 
 EDIT_IMAGE_URL_COUNT = 16
-EDIT_REQUIRED_COLUMNS = ["prompt", "model", "size", "n"]
-EDIT_OPTIONAL_DEFAULTS = {
-    "format": "png",
-    "quality": "auto",
-    "background": "auto",
-    "moderation": "auto",
-}
+EDIT_IMAGE_COLUMNS = [f"image_{i}" for i in range(1, EDIT_IMAGE_URL_COUNT + 1)]
+EDIT_RESULT_HEADERS = ["提示词", "尺寸", *EDIT_IMAGE_COLUMNS, "状态", "失败原因", "保存路径", "文件名"]
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
 
 
 def _collect_row_image_urls(row: dict) -> list:
     paths = []
-    for i in range(1, EDIT_IMAGE_URL_COUNT + 1):
-        path = str(row.get(f"image_{i}") or "").strip()
+    for name in EDIT_IMAGE_COLUMNS:
+        path = str(row.get(name) or "").strip()
         if path:
             paths.append(path)
     return paths
+
+
+def _read_edit_excel(path: Path) -> list:
+    headers, records = _read_excel_records(path)
+    prompt_key = next((h for h in headers if h in ("提示词", "prompt")), None)
+    size_key = next((h for h in headers if h in ("尺寸", "size")), None)
+    if prompt_key is None or size_key is None or "image_1" not in headers:
+        raise ValueError("Excel 表头必须包含：提示词、尺寸、image_1")
+
+    rows = []
+    for record in records:
+        row = {
+            "_row_number": record["_row_number"],
+            "提示词": str(record.get(prompt_key) or "").strip(),
+            "尺寸": str(record.get(size_key) or "").strip(),
+        }
+        for name in EDIT_IMAGE_COLUMNS:
+            row[name] = str(record.get(name) or "").strip()
+        rows.append(row)
+    return rows
 
 
 def _resolve_image_path(path_text: str) -> Path:
@@ -123,37 +138,46 @@ def _post_edit(row: dict, image_urls: list, api_key: str, api_base: str, timeout
 
 
 def _process_one(row_index: int, row: dict, defaults: dict) -> dict:
-    output = dict(row)
-    output.update({name: "" for name in RESULT_COLUMNS})
+    prompt = str(row.get("提示词") or "").strip()
+    size = str(row.get("尺寸") or "").strip()
+    output = {
+        "_row_number": row.get("_row_number", row_index),
+        "提示词": prompt,
+        "尺寸": size,
+        **{name: str(row.get(name) or "").strip() for name in EDIT_IMAGE_COLUMNS},
+        "状态": "",
+        "失败原因": "",
+        "保存路径": "",
+        "文件名": "",
+    }
 
-    normalized = {}
-    for name in EDIT_REQUIRED_COLUMNS:
-        normalized[name] = str(row.get(name) or "").strip()
-    missing = [name for name, value in normalized.items() if not value]
-    if missing:
-        output["status"] = "失败"
-        output["error_reason"] = f"CSV 缺少必填参数: {', '.join(missing)}"
+    if not prompt:
+        output["状态"] = "失败"
+        output["失败原因"] = "提示词不能为空"
+        return output
+    if not size:
+        output["状态"] = "失败"
+        output["失败原因"] = "尺寸不能为空"
         return output
 
     image_paths = _collect_row_image_urls(row)
     if not image_paths:
-        output["status"] = "失败"
-        output["error_reason"] = "至少需要填写 image_1 到 image_16 中的一列本地图片路径"
+        output["状态"] = "失败"
+        output["失败原因"] = "至少需要填写 image_1 到 image_16 中的一列本地图片路径"
         return output
 
-    for name, default in EDIT_OPTIONAL_DEFAULTS.items():
-        normalized[name] = str(row.get(name) or default).strip() or default
-
-    try:
-        normalized["n"] = max(1, min(10, int(normalized["n"])))
-    except ValueError:
-        output["status"] = "失败"
-        output["error_reason"] = f"n 不是有效数字: {normalized['n']}"
-        return output
-
-    timeout = int(str(row.get("timeout") or defaults["request_timeout"]).strip())
-    output_prefix = str(row.get("output_prefix") or f"gpt_image2_edit_{row_index}").strip()
-    output_prefix = output_prefix or f"gpt_image2_edit_{row_index}"
+    normalized = {
+        "model": defaults["model"],
+        "prompt": prompt,
+        "n": defaults["n"],
+        "size": size,
+        "format": defaults["format"],
+        "quality": defaults["quality"],
+        "background": defaults["background"],
+        "moderation": defaults["moderation"],
+    }
+    timeout = defaults["request_timeout"]
+    output_prefix = f"gpt_image2_edit_{row_index}"
     attempts = defaults["retry_count"] + 1
     last_error = ""
 
@@ -169,8 +193,8 @@ def _process_one(row_index: int, row: dict, defaults: dict) -> dict:
             for path in image_paths
         ]
     except Exception as exc:
-        output["status"] = "失败"
-        output["error_reason"] = str(exc)
+        output["状态"] = "失败"
+        output["失败原因"] = str(exc)
         return output
 
     for attempt in range(1, attempts + 1):
@@ -195,10 +219,9 @@ def _process_one(row_index: int, row: dict, defaults: dict) -> dict:
                 local_paths.append(local_path)
                 file_names.append(filename)
 
-            output["status"] = "成功"
-            output["image_urls"] = "\n".join(urls)
-            output["local_paths"] = "\n".join(local_paths)
-            output["file_names"] = "\n".join(file_names)
+            output["状态"] = "成功"
+            output["保存路径"] = "\n".join(local_paths)
+            output["文件名"] = "\n".join(file_names)
             return output
         except Exception as exc:
             last_error = str(exc)
@@ -206,29 +229,35 @@ def _process_one(row_index: int, row: dict, defaults: dict) -> dict:
                 break
             time.sleep(defaults["retry_interval"])
 
-    output["status"] = "失败"
-    output["error_reason"] = last_error
+    output["状态"] = "失败"
+    output["失败原因"] = last_error
     return output
 
 
 class GPTImage2BatchEdit:
-    """GPT Image 2 CSV batch image edit node."""
+    """GPT Image 2 Excel batch image edit node."""
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {},
             "optional": {
-                "csv_file": (_input_csv_files(), {
-                    "tooltip": "上传或选择 input 目录中的 CSV",
+                "excel_file": (_input_excel_files(), {
+                    "tooltip": "上传或选择 input 目录中的 Excel",
                     "image_upload": True,
                     "editable": True,
                 }),
-                "csv_path": ("STRING", {"default": "", "tooltip": "CSV 完整路径"}),
+                "excel_path": ("STRING", {"default": "", "tooltip": "Excel 完整路径"}),
                 "api_key": ("STRING", {"default": "", "tooltip": "留空使用 KUAI_API_KEY"}),
                 "api_base": ("STRING", {"default": "https://ai.kegeai.top"}),
                 "save_dir": ("STRING", {"default": "output/gpt_image2_edit_batch"}),
                 "batch_size": ("INT", {"default": 10, "min": 1, "max": 20}),
+                "model": (EDIT_MODELS, {"default": "gpt-image-2"}),
+                "n": ("INT", {"default": 1, "min": 1, "max": 10}),
+                "format": (FORMATS, {"default": "png"}),
+                "quality": (QUALITY_OPTIONS, {"default": "auto"}),
+                "background": (["auto", "transparent", "opaque"], {"default": "auto"}),
+                "moderation": (["auto", "low"], {"default": "auto"}),
                 "upload_url": ("STRING", {"default": "https://imageproxy.zhongzhuan.chat/api/upload"}),
                 "upload_format": (["jpeg", "png", "webp"], {"default": "jpeg"}),
                 "upload_quality": ("INT", {"default": 90, "min": 1, "max": 100}),
@@ -243,12 +272,18 @@ class GPTImage2BatchEdit:
     @classmethod
     def INPUT_LABELS(cls):
         return {
-            "csv_file": "CSV文件",
-            "csv_path": "CSV路径",
+            "excel_file": "Excel文件",
+            "excel_path": "Excel路径",
             "api_key": "API密钥",
             "api_base": "API地址",
             "save_dir": "图片保存目录",
             "batch_size": "并发数",
+            "model": "模型",
+            "n": "生成数量",
+            "format": "输出格式",
+            "quality": "生成质量",
+            "background": "背景",
+            "moderation": "审查级别",
             "upload_url": "图床地址",
             "upload_format": "上传格式",
             "upload_quality": "上传质量",
@@ -260,13 +295,15 @@ class GPTImage2BatchEdit:
         }
 
     RETURN_TYPES = ("STRING", "STRING", "STRING", "INT", "INT")
-    RETURN_NAMES = ("处理报告", "结果CSV路径", "图片保存目录", "成功数量", "失败数量")
+    RETURN_NAMES = ("处理报告", "结果Excel路径", "图片保存目录", "成功数量", "失败数量")
     FUNCTION = "process"
     CATEGORY = "KuAi/GPTImage"
     OUTPUT_NODE = True
 
-    def process(self, csv_file="", csv_path="", api_key="", api_base="https://ai.kegeai.top",
+    def process(self, excel_file="", excel_path="", api_key="", api_base="https://ai.kegeai.top",
                 save_dir="output/gpt_image2_edit_batch", batch_size=10,
+                model="gpt-image-2", n=1, format="png", quality="auto",
+                background="auto", moderation="auto",
                 upload_url="https://imageproxy.zhongzhuan.chat/api/upload",
                 upload_format="jpeg", upload_quality=90, upload_timeout=30,
                 request_timeout=1800, download_timeout=1800,
@@ -275,13 +312,23 @@ class GPTImage2BatchEdit:
         if not api_key:
             raise RuntimeError("API Key 未配置，请填写 api_key 或设置 KUAI_API_KEY")
 
-        source = _resolve_csv_path(csv_file, csv_path)
-        fieldnames, rows = _read_csv(source)
+        source = _resolve_excel_path(excel_file, excel_path)
+        rows = _read_edit_excel(source)
         total = len(rows)
+        try:
+            n = max(1, min(10, int(n)))
+        except ValueError:
+            raise RuntimeError(f"n 不是有效数字: {n}")
         defaults = {
             "api_key": api_key,
             "api_base": api_base,
             "save_dir": save_dir,
+            "model": model,
+            "n": n,
+            "format": format,
+            "quality": quality,
+            "background": background,
+            "moderation": moderation,
             "upload_url": upload_url,
             "upload_format": upload_format,
             "upload_quality": upload_quality,
@@ -305,26 +352,31 @@ class GPTImage2BatchEdit:
                     results.append(future.result())
 
         results.sort(key=lambda item: item.get("_row_number", 0))
-        _write_result_csv(source, fieldnames, results)
+        result_path = _result_excel_path(source)
+        _write_simple_xlsx(
+            result_path,
+            EDIT_RESULT_HEADERS,
+            [[row.get(header, "") for header in EDIT_RESULT_HEADERS] for row in results],
+        )
 
-        success = [row for row in results if row.get("status") == "成功"]
-        failed = [row for row in results if row.get("status") != "成功"]
+        success = [row for row in results if row.get("状态") == "成功"]
+        failed = [row for row in results if row.get("状态") != "成功"]
         abs_save_dir = str(_comfy_root() / save_dir)
         lines = [
             "GPT-Image2批量编辑图片完成",
             f"总计: {total}",
             f"成功: {len(success)}",
             f"失败: {len(failed)}",
-            f"结果CSV: {source}",
+            f"结果Excel: {result_path}",
             f"图片目录: {abs_save_dir}",
         ]
         if failed:
             lines.append("失败记录:")
             for row in failed:
-                lines.append(f"行 {row.get('_row_number', '')}: {row.get('error_reason', '')}")
+                lines.append(f"行 {row.get('_row_number', '')}: {row.get('失败原因', '')}")
         report = "\n".join(lines)
         print(report)
-        return (report, str(source), abs_save_dir, len(success), len(failed))
+        return (report, str(result_path), abs_save_dir, len(success), len(failed))
 
 
 NODE_CLASS_MAPPINGS = {
