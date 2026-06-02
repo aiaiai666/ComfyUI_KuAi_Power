@@ -251,7 +251,7 @@ class GPTImage2BatchEdit:
                 "api_key": ("STRING", {"default": "", "tooltip": "留空使用 KUAI_API_KEY"}),
                 "api_base": ("STRING", {"default": "https://ai.kegeai.top"}),
                 "save_dir": ("STRING", {"default": "output/gpt_image2_edit_batch"}),
-                "batch_size": ("INT", {"default": 10, "min": 1, "max": 20}),
+                "batch_size": ("INT", {"default": 10, "min": 1, "max": 999}),
                 "model": (EDIT_MODELS, {"default": "gpt-image-2"}),
                 "n": ("INT", {"default": 1, "min": 1, "max": 10}),
                 "format": (FORMATS, {"default": "png"}),

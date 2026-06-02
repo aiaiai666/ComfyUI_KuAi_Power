@@ -526,7 +526,7 @@ class GPTImage2BatchTextGenerate:
                 "api_key": ("STRING", {"default": "", "tooltip": "留空使用 KUAI_API_KEY"}),
                 "api_base": ("STRING", {"default": "https://ai.kegeai.top"}),
                 "save_dir": ("STRING", {"default": "output/gpt_image2_batch"}),
-                "batch_size": ("INT", {"default": 10, "min": 1, "max": 20}),
+                "batch_size": ("INT", {"default": 10, "min": 1, "max": 999}),
                 "request_timeout": ("INT", {"default": 1800, "min": 30, "max": 9999}),
                 "download_timeout": ("INT", {"default": 1800, "min": 30, "max": 9999}),
                 "retry_count": ("INT", {"default": 3, "min": 0, "max": 10}),
