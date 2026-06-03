@@ -5,9 +5,9 @@ const OMNI_NODES = new Set([
 ]);
 
 const CONTROLLED_WIDGETS = new Set([
-  "image_1",
-  "image_2",
-  "image_3",
+  "image_1_url",
+  "image_2_url",
+  "image_3_url",
   "input_reference",
 ]);
 
@@ -23,12 +23,24 @@ function generationType(node) {
 
 function setWidgetEnabled(widget, enabled) {
   if (!widget) return;
+  widget.__omniEnabled = enabled;
+  if (!enabled) {
+    widget.__omniLockedValue = widget.value;
+  }
+
   widget.disabled = !enabled;
   widget.readonly = !enabled;
+  widget.readOnly = !enabled;
+  if (widget.options) {
+    widget.options.disabled = !enabled;
+  }
 
   const element = widget.element || widget.inputEl;
   if (element) {
     element.disabled = !enabled;
+    element.readOnly = !enabled;
+    element.style.pointerEvents = enabled ? "" : "none";
+    element.style.opacity = enabled ? "" : "0.55";
   }
 }
 
@@ -52,9 +64,9 @@ function updateOmniWidgets(node) {
   const type = generationType(node);
 
   const enabledByName = {
-    image_1: type === 2 || type === 3,
-    image_2: type === 2 || type === 3,
-    image_3: type === 3,
+    image_1_url: type === 2 || type === 3,
+    image_2_url: type === 2 || type === 3,
+    image_3_url: type === 3,
     input_reference: type === 4,
   };
 
@@ -79,6 +91,25 @@ function wrapCallback(widget, node) {
   widget.__omniWrapped = true;
 }
 
+function wrapControlledCallback(widget, node) {
+  if (!widget || widget.__omniControlledWrapped) return;
+  const original = widget.callback;
+  widget.callback = function (...args) {
+    const previous = widget.value;
+    const result = original?.apply(this, args);
+    if (widget.__omniEnabled === false) {
+      widget.value = widget.__omniLockedValue ?? previous;
+      const element = widget.element || widget.inputEl;
+      if (element && "value" in element) {
+        element.value = widget.value;
+      }
+    }
+    setTimeout(() => updateOmniWidgets(node), 0);
+    return result;
+  };
+  widget.__omniControlledWrapped = true;
+}
+
 app.registerExtension({
   name: "KuAi.OmniDynamicUI",
   async beforeRegisterNodeDef(nodeType, nodeData) {
@@ -88,6 +119,9 @@ app.registerExtension({
     nodeType.prototype.onNodeCreated = function (...args) {
       const result = onNodeCreated?.apply(this, args);
       wrapCallback(getWidget(this, "type"), this);
+      for (const widgetName of CONTROLLED_WIDGETS) {
+        wrapControlledCallback(getWidget(this, widgetName), this);
+      }
       setTimeout(() => updateOmniWidgets(this), 0);
       return result;
     };

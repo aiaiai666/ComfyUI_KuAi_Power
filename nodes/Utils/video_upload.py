@@ -49,6 +49,7 @@ SUPPORTED_VIDEO_EXTENSIONS = {
     ".avi",
     ".mkv",
 }
+MAX_VIDEO_UPLOAD_BYTES = 50 * 1024 * 1024
 
 
 def _save_video_input_to_temp_file(video_input):
@@ -196,6 +197,14 @@ class UploadVideoToHost:
         return guessed or "application/octet-stream"
 
     @staticmethod
+    def _validate_video_size(file_path):
+        size = os.path.getsize(file_path)
+        if size > MAX_VIDEO_UPLOAD_BYTES:
+            max_mb = MAX_VIDEO_UPLOAD_BYTES // (1024 * 1024)
+            actual_mb = size / (1024 * 1024)
+            raise RuntimeError(f"视频文件超过 {max_mb}MB，当前约 {actual_mb:.2f}MB，请压缩后再上传")
+
+    @staticmethod
     def _extract_uploaded_url(data):
         if not isinstance(data, dict):
             return ""
@@ -273,6 +282,7 @@ class UploadVideoToHost:
             if ext not in SUPPORTED_VIDEO_EXTENSIONS:
                 supported = ", ".join(sorted(SUPPORTED_VIDEO_EXTENSIONS))
                 raise RuntimeError(f"仅支持常见视频格式 {supported}，当前文件: {file_path}")
+            self._validate_video_size(file_path)
 
             mime = self._guess_video_mime(file_path)
             with open(file_path, "rb") as f:

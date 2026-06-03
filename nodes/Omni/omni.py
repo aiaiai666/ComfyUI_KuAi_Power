@@ -150,14 +150,14 @@ def _normalize_size(size):
     return clean
 
 
-def _resolve_media_by_type(generation_type, image_1="", image_2="", image_3="", input_reference=""):
+def _resolve_media_by_type(generation_type, image_1_url="", image_2_url="", image_3_url="", input_reference=""):
     if generation_type == 1:
         return 1, [], ""
     if generation_type == 2:
-        images = _build_images(image_1, image_2)
+        images = _build_images(image_1_url, image_2_url)
         return (2 if images else 1), images, ""
     if generation_type == 3:
-        images = _build_images(image_1, image_2, image_3)
+        images = _build_images(image_1_url, image_2_url, image_3_url)
         return (3 if images else 1), images, ""
     if generation_type == 4:
         return 4, [], str(input_reference or "").strip()
@@ -241,15 +241,15 @@ class OmniCreateVideo:
                 }),
             },
             "optional": {
-                "image_1": ("STRING", {
+                "image_1_url": ("STRING", {
                     "default": "",
                     "tooltip": "图片1链接；由传图到临时图床等节点输出"
                 }),
-                "image_2": ("STRING", {
+                "image_2_url": ("STRING", {
                     "default": "",
                     "tooltip": "图片2链接；type=2 时作为尾帧"
                 }),
-                "image_3": ("STRING", {
+                "image_3_url": ("STRING", {
                     "default": "",
                     "tooltip": "图片3链接；type=3 时生效"
                 }),
@@ -292,9 +292,9 @@ class OmniCreateVideo:
             "seconds": "时长",
             "enable_upsample": "启用超分",
             "enable_sample": "切换1080p",
-            "image_1": "图片1链接",
-            "image_2": "图片2链接",
-            "image_3": "图片3链接",
+            "image_1_url": "图片1链接",
+            "image_2_url": "图片2链接",
+            "image_3_url": "图片3链接",
             "input_reference": "编辑参考视频",
             "size": "自定义尺寸",
             "custom_model": "自定义模型",
@@ -309,7 +309,7 @@ class OmniCreateVideo:
     CATEGORY = "KuAi/Omni"
 
     def create(self, prompt, model, type, aspect_ratio, seconds, enable_upsample, enable_sample,
-               image_1="", image_2="", image_3="", input_reference="", size="", custom_model="",
+               image_1_url="", image_2_url="", image_3_url="", input_reference="", size="", custom_model="",
                api_base=OMNI_DEFAULT_API_BASE, api_key="", timeout=1800):
         api_key = env_or(api_key, "KUAI_API_KEY")
         if not api_key:
@@ -320,9 +320,9 @@ class OmniCreateVideo:
         generation_type = _normalize_generation_type(type)
         effective_generation_type, images, effective_input_reference = _resolve_media_by_type(
             generation_type=generation_type,
-            image_1=image_1,
-            image_2=image_2,
-            image_3=image_3,
+            image_1_url=image_1_url,
+            image_2_url=image_2_url,
+            image_3_url=image_3_url,
             input_reference=input_reference,
         )
         _validate_create_inputs(
