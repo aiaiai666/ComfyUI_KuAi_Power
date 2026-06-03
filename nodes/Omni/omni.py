@@ -23,7 +23,12 @@ OMNI_DEFAULT_CREATE_MODEL = "omni-flash"
 OMNI_DEFAULT_QUERY_MODEL = "omni-flash"
 OMNI_EDIT_MODEL = "omni-flash-edit"
 OMNI_MODEL_CHOICES = [OMNI_DEFAULT_CREATE_MODEL, OMNI_EDIT_MODEL]
-OMNI_GENERATION_TYPES = ["1", "2", "3", "4"]
+OMNI_GENERATION_TYPES = [
+    "1-文生视频",
+    "2-首尾帧",
+    "3-垫图参考",
+    "4-Omni-Flash 视频编辑",
+]
 OMNI_ASPECT_RATIOS = ["9:16", "16:9"]
 OMNI_SECONDS_PATTERN = re.compile(r"^[1-9][0-9]*$")
 OMNI_SIZE_PATTERN = re.compile(r"^[1-9][0-9]{1,4}x[1-9][0-9]{1,4}$")
@@ -123,11 +128,11 @@ def _build_images(image_1="", image_2="", image_urls=""):
 
 
 def _normalize_generation_type(value):
-    clean = str(value or "1").strip().split(" ", 1)[0]
-    try:
-        generation_type = int(clean)
-    except Exception:
+    clean = str(value or "1").strip()
+    match = re.match(r"^\s*([1-4])(?:\s*[-：: ].*)?\s*$", clean)
+    if not match:
         raise RuntimeError("生成类型必须是 1、2、3 或 4")
+    generation_type = int(match.group(1))
     if generation_type not in {1, 2, 3, 4}:
         raise RuntimeError("生成类型必须是 1、2、3 或 4")
     return generation_type
@@ -215,8 +220,8 @@ class OmniCreateVideo:
                     "tooltip": "创建模型名"
                 }),
                 "type": (OMNI_GENERATION_TYPES, {
-                    "default": "1",
-                    "tooltip": "1=文生视频，2=首尾帧生视频，3=多图生视频，4=Omni-Flash 视频编辑占位"
+                    "default": "1-文生视频",
+                    "tooltip": "生成类型；实际提交给 API 的值仍为 1、2、3、4"
                 }),
                 "aspect_ratio": (["9:16", "16:9"], {
                     "default": "9:16",
@@ -227,11 +232,11 @@ class OmniCreateVideo:
                     "tooltip": "视频时长（秒），例如 8"
                 }),
                 "enable_upsample": ("BOOLEAN", {
-                    "default": False,
+                    "default": True,
                     "tooltip": "升级到 1080p（部分 4K 模型有效）"
                 }),
                 "enable_sample": ("BOOLEAN", {
-                    "default": False,
+                    "default": True,
                     "tooltip": "Omni-Flash 系列切换 1080p（4K 模型忽略）"
                 }),
             },
