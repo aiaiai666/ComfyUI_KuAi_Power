@@ -232,6 +232,26 @@ class OmniCreateVideo:
                     "default": OMNI_DEFAULT_CREATE_MODEL,
                     "tooltip": "创建模型名"
                 }),
+                "type": (OMNI_GENERATION_TYPES, {
+                    "default": "1-文生视频",
+                    "tooltip": "生成类型；实际提交给 API 的值仍为 1、2、3、4"
+                }),
+                "image_1_url": ("STRING", {
+                    "default": "",
+                    "tooltip": "图片1链接；由传图到临时图床等节点输出"
+                }),
+                "image_2_url": ("STRING", {
+                    "default": "",
+                    "tooltip": "图片2链接；type=2 时作为尾帧"
+                }),
+                "image_3_url": ("STRING", {
+                    "default": "",
+                    "tooltip": "图片3链接；type=3 时生效"
+                }),
+                "input_reference": ("STRING", {
+                    "default": "",
+                    "tooltip": "Omni-Flash 视频编辑参考视频 URL 或 dataURI；当前仅占位"
+                }),
                 "aspect_ratio": (["9:16", "16:9"], {
                     "default": "9:16",
                     "tooltip": "视频宽高比；填写 size 时不发送该参数"
@@ -250,6 +270,10 @@ class OmniCreateVideo:
                     "default": "",
                     "tooltip": "自定义创建模型；留空使用下拉模型"
                 }),
+                "size": ("STRING", {
+                    "default": "",
+                    "tooltip": "自定义尺寸，例如 1280x720；填写后不发送 aspect_ratio"
+                }),
                 "api_base": ("STRING", {
                     "default": OMNI_DEFAULT_API_BASE,
                     "tooltip": "API 地址"
@@ -263,10 +287,6 @@ class OmniCreateVideo:
                     "min": 5,
                     "max": 9999,
                     "tooltip": "创建请求超时（秒）"
-                }),
-                "type": (OMNI_GENERATION_TYPES, {
-                    "default": "1-文生视频",
-                    "tooltip": "生成类型；实际提交给 API 的值仍为 1、2、3、4"
                 }),
                 "seconds": ("STRING", {
                     "default": "8",
@@ -282,26 +302,6 @@ class OmniCreateVideo:
                     "max": 2147483647,
                     "tooltip": "随机种子，0 表示随机"
                 }),
-                "image_1_url": ("STRING", {
-                    "default": "",
-                    "tooltip": "图片1链接；由传图到临时图床等节点输出"
-                }),
-                "image_2_url": ("STRING", {
-                    "default": "",
-                    "tooltip": "图片2链接；type=2 时作为尾帧"
-                }),
-                "image_3_url": ("STRING", {
-                    "default": "",
-                    "tooltip": "图片3链接；type=3 时生效"
-                }),
-                "input_reference": ("STRING", {
-                    "default": "",
-                    "tooltip": "Omni-Flash 视频编辑参考视频 URL 或 dataURI；当前仅占位"
-                }),
-                "size": ("STRING", {
-                    "default": "",
-                    "tooltip": "自定义尺寸，例如 1280x720；填写后不发送 aspect_ratio"
-                }),
             }
         }
 
@@ -311,21 +311,21 @@ class OmniCreateVideo:
             "prompt": "提示词",
             "model": "模型",
             "type": "生成类型",
+            "image_1_url": "图片1链接",
+            "image_2_url": "图片2链接",
+            "image_3_url": "图片3链接",
+            "input_reference": "编辑参考视频",
             "aspect_ratio": "宽高比",
             "enable_upsample": "启用超分",
             "enhance_prompt": "提示词增强",
             "custom_model": "自定义模型",
+            "size": "自定义尺寸",
             "api_base": "API地址",
             "api_key": "API密钥",
             "timeout": "超时",
             "seconds": "时长",
             "enable_sample": "切换1080p",
             "seed": "随机种子",
-            "image_1_url": "图片1链接",
-            "image_2_url": "图片2链接",
-            "image_3_url": "图片3链接",
-            "input_reference": "编辑参考视频",
-            "size": "自定义尺寸",
         }
 
     RETURN_TYPES = ("STRING", "STRING", "STRING", "INT", "STRING")

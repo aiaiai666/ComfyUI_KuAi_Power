@@ -12,6 +12,33 @@ const CONTROLLED_WIDGETS = new Set([
   "input_reference",
 ]);
 
+const ENABLED_BY_TYPE = {
+  1: {
+    image_1_url: false,
+    image_2_url: false,
+    image_3_url: false,
+    input_reference: false,
+  },
+  2: {
+    image_1_url: true,
+    image_2_url: true,
+    image_3_url: false,
+    input_reference: false,
+  },
+  3: {
+    image_1_url: true,
+    image_2_url: true,
+    image_3_url: true,
+    input_reference: false,
+  },
+  4: {
+    image_1_url: false,
+    image_2_url: false,
+    image_3_url: false,
+    input_reference: true,
+  },
+};
+
 function getWidget(node, name) {
   return node.widgets?.find((widget) => widget.name === name);
 }
@@ -63,13 +90,7 @@ function updateWidgetColors(widget, enabled) {
 
 function updateOmniWidgets(node) {
   const type = generationType(node);
-
-  const enabledByName = {
-    image_1_url: type === 2 || type === 3,
-    image_2_url: type === 2 || type === 3,
-    image_3_url: type === 3,
-    input_reference: type === 4,
-  };
+  const enabledByName = ENABLED_BY_TYPE[type] || ENABLED_BY_TYPE[1];
 
   for (const widget of node.widgets || []) {
     if (!CONTROLLED_WIDGETS.has(widget.name)) continue;
@@ -123,6 +144,13 @@ app.registerExtension({
       for (const widgetName of CONTROLLED_WIDGETS) {
         wrapControlledCallback(getWidget(this, widgetName), this);
       }
+      setTimeout(() => updateOmniWidgets(this), 0);
+      return result;
+    };
+
+    const onConfigure = nodeType.prototype.onConfigure;
+    nodeType.prototype.onConfigure = function (...args) {
+      const result = onConfigure?.apply(this, args);
       setTimeout(() => updateOmniWidgets(this), 0);
       return result;
     };
