@@ -152,6 +152,13 @@ def _normalize_size(size):
     return clean
 
 
+def _normalize_seed(seed):
+    value = int(seed)
+    if value < 0 or value > 2147483647:
+        raise RuntimeError("seed 必须在 0 到 2147483647 之间")
+    return value
+
+
 def _resolve_media_by_type(generation_type, image_1_url="", image_2_url="", image_3_url="", input_reference="",
                            image_1="", image_2="", image_urls=""):
     legacy_images = _build_images(image_1, image_2, *ensure_list_from_urls(image_urls))
@@ -179,13 +186,14 @@ def _validate_create_inputs(effective_model, generation_type, prompt):
 
 
 def _build_create_payload(effective_model, prompt, generation_type, aspect_ratio,
-                          images, input_reference, enable_upsample, enable_sample, seconds, size):
+                          images, input_reference, enable_upsample, enable_sample, seconds, size, seed):
     payload = {
         "model": effective_model,
         "prompt": str(prompt or "").strip(),
         "type": generation_type,
         "enable_upsample": bool(enable_upsample),
         "enable_sample": bool(enable_sample),
+        "seed": _normalize_seed(seed),
     }
 
     clean_size = _normalize_size(size)
@@ -238,19 +246,6 @@ class OmniCreateVideo:
                 }),
             },
             "optional": {
-                "image_1": ("STRING", {
-                    "default": "",
-                    "tooltip": "旧工作流兼容字段；等同图片1链接"
-                }),
-                "image_2": ("STRING", {
-                    "default": "",
-                    "tooltip": "旧工作流兼容字段；等同图片2链接"
-                }),
-                "image_urls": ("STRING", {
-                    "default": "",
-                    "multiline": True,
-                    "tooltip": "旧工作流兼容字段；多个图片 URL 用逗号、分号或换行分隔"
-                }),
                 "custom_model": ("STRING", {
                     "default": "",
                     "tooltip": "自定义创建模型；留空使用下拉模型"
@@ -280,6 +275,12 @@ class OmniCreateVideo:
                 "enable_sample": ("BOOLEAN", {
                     "default": True,
                     "tooltip": "Omni-Flash 系列切换 1080p（4K 模型忽略）"
+                }),
+                "seed": ("INT", {
+                    "default": 0,
+                    "min": 0,
+                    "max": 2147483647,
+                    "tooltip": "随机种子，0 表示随机"
                 }),
                 "image_1_url": ("STRING", {
                     "default": "",
@@ -313,15 +314,13 @@ class OmniCreateVideo:
             "aspect_ratio": "宽高比",
             "enable_upsample": "启用超分",
             "enhance_prompt": "提示词增强",
-            "image_1": "首帧图片URL",
-            "image_2": "尾帧图片URL",
-            "image_urls": "额外图片URL",
             "custom_model": "自定义模型",
             "api_base": "API地址",
             "api_key": "API密钥",
             "timeout": "超时",
             "seconds": "时长",
             "enable_sample": "切换1080p",
+            "seed": "随机种子",
             "image_1_url": "图片1链接",
             "image_2_url": "图片2链接",
             "image_3_url": "图片3链接",
@@ -338,7 +337,7 @@ class OmniCreateVideo:
                image_1="", image_2="", image_urls="", custom_model="",
                api_base=OMNI_DEFAULT_API_BASE, api_key="", timeout=1800,
                type="1-文生视频", seconds="8", enable_sample=True,
-               image_1_url="", image_2_url="", image_3_url="", input_reference="", size=""):
+               seed=0, image_1_url="", image_2_url="", image_3_url="", input_reference="", size=""):
         api_key = env_or(api_key, "KUAI_API_KEY")
         if not api_key:
             raise RuntimeError("API Key 未配置，请在节点参数或环境变量 KUAI_API_KEY 中设置")
@@ -375,6 +374,7 @@ class OmniCreateVideo:
             enable_sample=enable_sample,
             seconds=seconds,
             size=size,
+            seed=seed,
         )
 
         try:
