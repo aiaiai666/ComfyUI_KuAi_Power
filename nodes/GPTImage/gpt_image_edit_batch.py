@@ -263,6 +263,7 @@ class GPTImage2BatchEdit:
                 "api_base": ("STRING", {"default": "https://ai.kegeai.top"}),
                 "save_dir": ("STRING", {"default": "output/gpt_image2_edit_batch"}),
                 "batch_size": ("INT", {"default": 10, "min": 1, "max": 999}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "control_after_generate": True, "tooltip": "ComfyUI 工作流随机种子；仅用于每次提交任务时刷新执行，不会发送给 GPT Image 2 API。"}),
                 "model": (EDIT_MODELS, {"default": "gpt-image-2"}),
                 "n": ("INT", {"default": 1, "min": 1, "max": 10}),
                 "format": (FORMATS, {"default": "png"}),
@@ -289,6 +290,7 @@ class GPTImage2BatchEdit:
             "api_base": "API地址",
             "save_dir": "图片保存目录",
             "batch_size": "并发数",
+            "seed": "随机种子",
             "model": "模型",
             "n": "生成数量",
             "format": "输出格式",
@@ -312,7 +314,7 @@ class GPTImage2BatchEdit:
     OUTPUT_NODE = True
 
     def process(self, excel_file="", excel_path="", api_key="", api_base="https://ai.kegeai.top",
-                save_dir="output/gpt_image2_edit_batch", batch_size=10,
+                save_dir="output/gpt_image2_edit_batch", batch_size=10, seed=0,
                 model="gpt-image-2", n=1, format="png", quality="auto",
                 background="auto", moderation="auto",
                 upload_url="https://imageproxy.zhongzhuan.chat/api/upload",

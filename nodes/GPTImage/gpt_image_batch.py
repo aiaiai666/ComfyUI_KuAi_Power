@@ -442,6 +442,7 @@ class GPTImage2BatchTextGenerate:
                 "api_base": ("STRING", {"default": "https://ai.kegeai.top"}),
                 "save_dir": ("STRING", {"default": "output/gpt_image2_batch"}),
                 "batch_size": ("INT", {"default": 10, "min": 1, "max": 999}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "control_after_generate": True, "tooltip": "ComfyUI 工作流随机种子；仅用于每次提交任务时刷新执行，不会发送给 GPT Image 2 API。"}),
                 "request_timeout": ("INT", {"default": 1800, "min": 30, "max": 9999}),
                 "download_timeout": ("INT", {"default": 1800, "min": 30, "max": 9999}),
                 "retry_count": ("INT", {"default": 3, "min": 0, "max": 10}),
@@ -458,6 +459,7 @@ class GPTImage2BatchTextGenerate:
             "api_base": "API地址",
             "save_dir": "图片保存目录",
             "batch_size": "并发数",
+            "seed": "随机种子",
             "request_timeout": "请求超时",
             "download_timeout": "下载超时",
             "retry_count": "重试次数",
@@ -471,7 +473,7 @@ class GPTImage2BatchTextGenerate:
     OUTPUT_NODE = True
 
     def process(self, excel_file="", excel_path="", api_key="", api_base="https://ai.kegeai.top",
-                save_dir="output/gpt_image2_batch", batch_size=10, request_timeout=1800,
+                save_dir="output/gpt_image2_batch", batch_size=10, seed=0, request_timeout=1800,
                 download_timeout=1800, retry_count=3, retry_interval=3):
         api_key = env_or(api_key, "KUAI_API_KEY")
         if not api_key:
