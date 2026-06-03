@@ -8,7 +8,6 @@ import requests
 
 from ..Sora2.kuai_utils import (
     env_or,
-    ensure_list_from_urls,
     extract_error_message_from_response,
     extract_task_failure_detail,
     http_headers_auth_only,
@@ -111,15 +110,10 @@ def _extract_video_url(data):
     return ""
 
 
-def _build_images(image_1="", image_2="", image_urls=""):
+def _build_images(*values):
     images = []
     seen = set()
-    for value in (image_1, image_2):
-        clean = str(value or "").strip()
-        if clean and clean not in seen:
-            images.append(clean)
-            seen.add(clean)
-    for value in ensure_list_from_urls(image_urls) if image_urls else []:
+    for value in values:
         clean = str(value or "").strip()
         if clean and clean not in seen:
             images.append(clean)
@@ -156,27 +150,31 @@ def _normalize_size(size):
     return clean
 
 
-def _validate_create_inputs(effective_model, generation_type, prompt, images, input_reference):
+def _resolve_media_by_type(generation_type, image_1="", image_2="", image_3="", input_reference=""):
+    if generation_type == 1:
+        return 1, [], ""
+    if generation_type == 2:
+        images = _build_images(image_1, image_2)
+        return (2 if images else 1), images, ""
+    if generation_type == 3:
+        images = _build_images(image_1, image_2, image_3)
+        return (3 if images else 1), images, ""
+    if generation_type == 4:
+        return 4, [], str(input_reference or "").strip()
+    return generation_type, [], ""
+
+
+def _validate_create_inputs(effective_model, generation_type, prompt):
     if not str(prompt or "").strip():
         raise RuntimeError("prompt 不能为空")
     if not str(effective_model or "").strip():
         raise RuntimeError("model 不能为空")
     if effective_model == OMNI_EDIT_MODEL or generation_type == 4:
         raise RuntimeError("Omni-Flash 视频编辑暂未上线，当前仅占位，暂不能创建任务")
-    if str(input_reference or "").strip():
-        raise RuntimeError("input_reference 仅用于 Omni-Flash 视频编辑，当前暂未上线")
-
-    image_count = len(images)
-    if generation_type == 1 and image_count:
-        raise RuntimeError("type=1 为文生视频，不能传 images；请改用 type=2 或 type=3")
-    if generation_type == 2 and not 1 <= image_count <= 2:
-        raise RuntimeError("type=2 首尾帧生视频需要 1-2 张图片")
-    if generation_type == 3 and not 1 <= image_count <= 3:
-        raise RuntimeError("type=3 多图生视频需要 1-3 张图片")
 
 
 def _build_create_payload(effective_model, prompt, generation_type, aspect_ratio,
-                          images, enable_upsample, enable_sample, seconds, size):
+                          images, input_reference, enable_upsample, enable_sample, seconds, size):
     payload = {
         "model": effective_model,
         "prompt": str(prompt or "").strip(),
@@ -200,6 +198,8 @@ def _build_create_payload(effective_model, prompt, generation_type, aspect_ratio
         payload["seconds"] = clean_seconds
     if images:
         payload["images"] = images
+    if input_reference:
+        payload["input_reference"] = input_reference
     return payload
 
 
@@ -243,16 +243,15 @@ class OmniCreateVideo:
             "optional": {
                 "image_1": ("STRING", {
                     "default": "",
-                    "tooltip": "首帧图片 URL；为空则不传图片"
+                    "tooltip": "图片1链接；由传图到临时图床等节点输出"
                 }),
                 "image_2": ("STRING", {
                     "default": "",
-                    "tooltip": "尾帧图片 URL；只传 image_1 时为首帧图生视频"
+                    "tooltip": "图片2链接；type=2 时作为尾帧"
                 }),
-                "image_urls": ("STRING", {
+                "image_3": ("STRING", {
                     "default": "",
-                    "multiline": True,
-                    "tooltip": "额外图片 URL，多个用逗号、分号或换行分隔"
+                    "tooltip": "图片3链接；type=3 时生效"
                 }),
                 "input_reference": ("STRING", {
                     "default": "",
@@ -293,9 +292,9 @@ class OmniCreateVideo:
             "seconds": "时长",
             "enable_upsample": "启用超分",
             "enable_sample": "切换1080p",
-            "image_1": "首帧图片URL",
-            "image_2": "尾帧图片URL",
-            "image_urls": "额外图片URL",
+            "image_1": "图片1链接",
+            "image_2": "图片2链接",
+            "image_3": "图片3链接",
             "input_reference": "编辑参考视频",
             "size": "自定义尺寸",
             "custom_model": "自定义模型",
@@ -310,7 +309,7 @@ class OmniCreateVideo:
     CATEGORY = "KuAi/Omni"
 
     def create(self, prompt, model, type, aspect_ratio, seconds, enable_upsample, enable_sample,
-               image_1="", image_2="", image_urls="", input_reference="", size="", custom_model="",
+               image_1="", image_2="", image_3="", input_reference="", size="", custom_model="",
                api_base=OMNI_DEFAULT_API_BASE, api_key="", timeout=1800):
         api_key = env_or(api_key, "KUAI_API_KEY")
         if not api_key:
@@ -319,21 +318,26 @@ class OmniCreateVideo:
         api_base = (api_base or OMNI_DEFAULT_API_BASE).rstrip("/")
         effective_model = (custom_model or "").strip() or model
         generation_type = _normalize_generation_type(type)
-        images = _build_images(image_1=image_1, image_2=image_2, image_urls=image_urls)
+        effective_generation_type, images, effective_input_reference = _resolve_media_by_type(
+            generation_type=generation_type,
+            image_1=image_1,
+            image_2=image_2,
+            image_3=image_3,
+            input_reference=input_reference,
+        )
         _validate_create_inputs(
             effective_model=effective_model,
             generation_type=generation_type,
             prompt=prompt,
-            images=images,
-            input_reference=input_reference,
         )
 
         payload = _build_create_payload(
             effective_model=effective_model,
             prompt=prompt,
-            generation_type=generation_type,
+            generation_type=effective_generation_type,
             aspect_ratio=aspect_ratio,
             images=images,
+            input_reference=effective_input_reference,
             enable_upsample=enable_upsample,
             enable_sample=enable_sample,
             seconds=seconds,
