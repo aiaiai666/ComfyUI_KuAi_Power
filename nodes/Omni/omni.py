@@ -23,7 +23,7 @@ OMNI_DEFAULT_CREATE_MODEL = "omni-flash"
 OMNI_DEFAULT_QUERY_MODEL = "omni-flash"
 OMNI_LEGACY_CREATE_MODEL = "omni-flash-components"
 OMNI_EDIT_MODEL = "omni-flash-edit"
-OMNI_MODEL_CHOICES = [OMNI_DEFAULT_CREATE_MODEL, OMNI_LEGACY_CREATE_MODEL, OMNI_EDIT_MODEL]
+OMNI_MODEL_CHOICES = [OMNI_DEFAULT_CREATE_MODEL, OMNI_EDIT_MODEL]
 OMNI_GENERATION_TYPES = [
     "1-文生视频",
     "2-首尾帧",
@@ -164,8 +164,6 @@ def _resolve_media_by_type(generation_type, image_1_url="", image_2_url="", imag
     legacy_images = _build_images(image_1, image_2, *ensure_list_from_urls(image_urls))
     new_images = _build_images(image_1_url, image_2_url, image_3_url)
     if generation_type == 1:
-        if legacy_images and not new_images:
-            return (3 if len(legacy_images) > 2 else 2), legacy_images, ""
         return 1, [], ""
     if generation_type == 2:
         images = _build_images(image_1_url, image_2_url) or legacy_images[:2]
