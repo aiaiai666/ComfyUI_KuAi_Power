@@ -68,9 +68,9 @@ function updateOmniWidgets(node) {
   const type = generationType(node);
 
   const enabledByName = {
-    image_1: type === 2 || type === 3,
-    image_2: type === 2 || type === 3,
-    image_urls: type === 3,
+    image_1: false,
+    image_2: false,
+    image_urls: false,
     image_1_url: type === 2 || type === 3,
     image_2_url: type === 2 || type === 3,
     image_3_url: type === 3,

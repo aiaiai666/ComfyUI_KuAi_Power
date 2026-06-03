@@ -161,10 +161,10 @@ def _resolve_media_by_type(generation_type, image_1_url="", image_2_url="", imag
             return (3 if len(legacy_images) > 2 else 2), legacy_images, ""
         return 1, [], ""
     if generation_type == 2:
-        images = _build_images(image_1_url, image_2_url, image_1, image_2)
+        images = _build_images(image_1_url, image_2_url) or legacy_images[:2]
         return (2 if images else 1), images, ""
     if generation_type == 3:
-        images = _build_images(*new_images, *legacy_images)
+        images = new_images or legacy_images
         return (3 if images else 1), images, ""
     if generation_type == 4:
         return 4, [], str(input_reference or "").strip()
@@ -176,8 +176,6 @@ def _validate_create_inputs(effective_model, generation_type, prompt):
         raise RuntimeError("prompt 不能为空")
     if not str(effective_model or "").strip():
         raise RuntimeError("model 不能为空")
-    if effective_model == OMNI_EDIT_MODEL or generation_type == 4:
-        raise RuntimeError("Omni-Flash 视频编辑暂未上线，当前仅占位，暂不能创建任务")
 
 
 def _build_create_payload(effective_model, prompt, generation_type, aspect_ratio,
@@ -348,6 +346,8 @@ class OmniCreateVideo:
         api_base = (api_base or OMNI_DEFAULT_API_BASE).rstrip("/")
         effective_model = (custom_model or "").strip() or model
         generation_type = _normalize_generation_type(type)
+        if generation_type == 4 and effective_model in {OMNI_DEFAULT_CREATE_MODEL, OMNI_LEGACY_CREATE_MODEL}:
+            effective_model = OMNI_EDIT_MODEL
         effective_generation_type, images, effective_input_reference = _resolve_media_by_type(
             generation_type=generation_type,
             image_1_url=image_1_url,
