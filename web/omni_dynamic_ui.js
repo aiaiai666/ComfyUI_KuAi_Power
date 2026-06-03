@@ -2,9 +2,13 @@ import { app } from "../../scripts/app.js";
 
 const OMNI_NODES = new Set([
   "OmniCreateVideo",
+  "OmniCreateAndWait",
 ]);
 
 const CONTROLLED_WIDGETS = new Set([
+  "image_1",
+  "image_2",
+  "image_urls",
   "image_1_url",
   "image_2_url",
   "image_3_url",
@@ -64,6 +68,9 @@ function updateOmniWidgets(node) {
   const type = generationType(node);
 
   const enabledByName = {
+    image_1: type === 2 || type === 3,
+    image_2: type === 2 || type === 3,
+    image_urls: type === 3,
     image_1_url: type === 2 || type === 3,
     image_2_url: type === 2 || type === 3,
     image_3_url: type === 3,

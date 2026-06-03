@@ -19,6 +19,7 @@ try:
         http_headers_multipart,
         extract_error_message_from_json,
         extract_error_message_from_response,
+        validate_public_http_url,
     )
 except ImportError:
     import importlib.util
@@ -29,6 +30,7 @@ except ImportError:
     http_headers_multipart = utils.http_headers_multipart
     extract_error_message_from_json = utils.extract_error_message_from_json
     extract_error_message_from_response = utils.extract_error_message_from_response
+    validate_public_http_url = utils.validate_public_http_url
 
 try:
     import folder_paths
@@ -52,6 +54,21 @@ SUPPORTED_VIDEO_EXTENSIONS = {
 MAX_VIDEO_UPLOAD_BYTES = 50 * 1024 * 1024
 
 
+def _input_directory():
+    return Path(folder_paths.get_input_directory()).resolve()
+
+
+def _ensure_input_child(path):
+    resolved = Path(path).resolve()
+    if HAS_FOLDER_PATHS:
+        input_dir = _input_directory()
+        try:
+            resolved.relative_to(input_dir)
+        except ValueError:
+            raise RuntimeError("视频文件必须位于 ComfyUI input 目录内")
+    return resolved
+
+
 def _save_video_input_to_temp_file(video_input):
     """将 ComfyUI VIDEO 输入保存为临时文件并返回路径"""
     temp_path = None
@@ -59,7 +76,7 @@ def _save_video_input_to_temp_file(video_input):
     if hasattr(video_input, "get_stream_source") and callable(getattr(video_input, "get_stream_source")):
         src = video_input.get_stream_source()
         if isinstance(src, str) and os.path.exists(src):
-            return src, False
+            return str(_ensure_input_child(src)), False
         if isinstance(src, io.BytesIO):
             with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
                 src.seek(0)
@@ -156,25 +173,26 @@ class UploadVideoToHost:
         if video_select and str(video_select).strip():
             if not HAS_FOLDER_PATHS:
                 raise RuntimeError("folder_paths 模块不可用，请使用 video_path 参数")
-            input_dir = folder_paths.get_input_directory()
-            path = os.path.join(input_dir, str(video_select).strip())
-            if not os.path.exists(path):
+            path = _ensure_input_child(_input_directory() / str(video_select).strip())
+            if not path.exists():
                 raise RuntimeError(f"视频文件不存在: {video_select}")
-            return path
+            return str(path)
 
-        path = (video_path or "").strip()
-        if not path:
+        clean_path = (video_path or "").strip()
+        if not clean_path:
             raise RuntimeError("请提供视频文件（video_select 或 video_path）")
 
-        if not os.path.isabs(path) and HAS_FOLDER_PATHS:
-            input_dir = folder_paths.get_input_directory()
-            candidate = os.path.join(input_dir, path)
-            if os.path.exists(candidate):
-                path = candidate
+        path = Path(clean_path)
+        if HAS_FOLDER_PATHS:
+            if not path.is_absolute():
+                path = _input_directory() / path
+            path = _ensure_input_child(path)
+        else:
+            path = path.resolve()
 
-        if not os.path.exists(path):
+        if not path.exists():
             raise RuntimeError(f"视频文件不存在: {path}")
-        return path
+        return str(path)
 
     @staticmethod
     def _guess_video_mime(file_path):
@@ -272,6 +290,7 @@ class UploadVideoToHost:
         temp_video_path = None
         cleanup_temp = False
         try:
+            upload_url = validate_public_http_url(upload_url, "视频上传URL")
             if video is not None:
                 file_path, cleanup_temp = _save_video_input_to_temp_file(video)
                 temp_video_path = file_path if cleanup_temp else None

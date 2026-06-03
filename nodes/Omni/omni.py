@@ -8,6 +8,7 @@ import requests
 
 from ..Sora2.kuai_utils import (
     env_or,
+    ensure_list_from_urls,
     extract_error_message_from_response,
     extract_task_failure_detail,
     http_headers_auth_only,
@@ -20,8 +21,9 @@ OMNI_FAILED_STATUSES = {"failed", "failure", "error", "cancelled", "canceled"}
 OMNI_DEFAULT_API_BASE = "https://ai.kegeai.top"
 OMNI_DEFAULT_CREATE_MODEL = "omni-flash"
 OMNI_DEFAULT_QUERY_MODEL = "omni-flash"
+OMNI_LEGACY_CREATE_MODEL = "omni-flash-components"
 OMNI_EDIT_MODEL = "omni-flash-edit"
-OMNI_MODEL_CHOICES = [OMNI_DEFAULT_CREATE_MODEL, OMNI_EDIT_MODEL]
+OMNI_MODEL_CHOICES = [OMNI_DEFAULT_CREATE_MODEL, OMNI_LEGACY_CREATE_MODEL, OMNI_EDIT_MODEL]
 OMNI_GENERATION_TYPES = [
     "1-文生视频",
     "2-首尾帧",
@@ -150,14 +152,19 @@ def _normalize_size(size):
     return clean
 
 
-def _resolve_media_by_type(generation_type, image_1_url="", image_2_url="", image_3_url="", input_reference=""):
+def _resolve_media_by_type(generation_type, image_1_url="", image_2_url="", image_3_url="", input_reference="",
+                           image_1="", image_2="", image_urls=""):
+    legacy_images = _build_images(image_1, image_2, *ensure_list_from_urls(image_urls))
+    new_images = _build_images(image_1_url, image_2_url, image_3_url)
     if generation_type == 1:
+        if legacy_images and not new_images:
+            return (3 if len(legacy_images) > 2 else 2), legacy_images, ""
         return 1, [], ""
     if generation_type == 2:
-        images = _build_images(image_1_url, image_2_url)
+        images = _build_images(image_1_url, image_2_url, image_1, image_2)
         return (2 if images else 1), images, ""
     if generation_type == 3:
-        images = _build_images(image_1_url, image_2_url, image_3_url)
+        images = _build_images(*new_images, *legacy_images)
         return (3 if images else 1), images, ""
     if generation_type == 4:
         return 4, [], str(input_reference or "").strip()
@@ -219,28 +226,63 @@ class OmniCreateVideo:
                     "default": OMNI_DEFAULT_CREATE_MODEL,
                     "tooltip": "创建模型名"
                 }),
-                "type": (OMNI_GENERATION_TYPES, {
-                    "default": "1-文生视频",
-                    "tooltip": "生成类型；实际提交给 API 的值仍为 1、2、3、4"
-                }),
                 "aspect_ratio": (["9:16", "16:9"], {
                     "default": "9:16",
                     "tooltip": "视频宽高比；填写 size 时不发送该参数"
-                }),
-                "seconds": ("STRING", {
-                    "default": "8",
-                    "tooltip": "视频时长（秒），例如 8"
                 }),
                 "enable_upsample": ("BOOLEAN", {
                     "default": True,
                     "tooltip": "升级到 1080p（部分 4K 模型有效）"
                 }),
+                "enhance_prompt": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "旧工作流兼容参数；当前 Omni API 不发送"
+                }),
+            },
+            "optional": {
+                "image_1": ("STRING", {
+                    "default": "",
+                    "tooltip": "旧工作流兼容字段；等同图片1链接"
+                }),
+                "image_2": ("STRING", {
+                    "default": "",
+                    "tooltip": "旧工作流兼容字段；等同图片2链接"
+                }),
+                "image_urls": ("STRING", {
+                    "default": "",
+                    "multiline": True,
+                    "tooltip": "旧工作流兼容字段；多个图片 URL 用逗号、分号或换行分隔"
+                }),
+                "custom_model": ("STRING", {
+                    "default": "",
+                    "tooltip": "自定义创建模型；留空使用下拉模型"
+                }),
+                "api_base": ("STRING", {
+                    "default": OMNI_DEFAULT_API_BASE,
+                    "tooltip": "API 地址"
+                }),
+                "api_key": ("STRING", {
+                    "default": "",
+                    "tooltip": "API Key；留空使用环境变量 KUAI_API_KEY"
+                }),
+                "timeout": ("INT", {
+                    "default": 1800,
+                    "min": 5,
+                    "max": 9999,
+                    "tooltip": "创建请求超时（秒）"
+                }),
+                "type": (OMNI_GENERATION_TYPES, {
+                    "default": "1-文生视频",
+                    "tooltip": "生成类型；实际提交给 API 的值仍为 1、2、3、4"
+                }),
+                "seconds": ("STRING", {
+                    "default": "8",
+                    "tooltip": "视频时长（秒），例如 8"
+                }),
                 "enable_sample": ("BOOLEAN", {
                     "default": True,
                     "tooltip": "Omni-Flash 系列切换 1080p（4K 模型忽略）"
                 }),
-            },
-            "optional": {
                 "image_1_url": ("STRING", {
                     "default": "",
                     "tooltip": "图片1链接；由传图到临时图床等节点输出"
@@ -261,24 +303,6 @@ class OmniCreateVideo:
                     "default": "",
                     "tooltip": "自定义尺寸，例如 1280x720；填写后不发送 aspect_ratio"
                 }),
-                "custom_model": ("STRING", {
-                    "default": "",
-                    "tooltip": "自定义创建模型；留空使用下拉模型"
-                }),
-                "api_base": ("STRING", {
-                    "default": OMNI_DEFAULT_API_BASE,
-                    "tooltip": "API 地址"
-                }),
-                "api_key": ("STRING", {
-                    "default": "",
-                    "tooltip": "API Key；留空使用环境变量 KUAI_API_KEY"
-                }),
-                "timeout": ("INT", {
-                    "default": 1800,
-                    "min": 5,
-                    "max": 9999,
-                    "tooltip": "创建请求超时（秒）"
-                }),
             }
         }
 
@@ -289,18 +313,22 @@ class OmniCreateVideo:
             "model": "模型",
             "type": "生成类型",
             "aspect_ratio": "宽高比",
-            "seconds": "时长",
             "enable_upsample": "启用超分",
+            "enhance_prompt": "提示词增强",
+            "image_1": "首帧图片URL",
+            "image_2": "尾帧图片URL",
+            "image_urls": "额外图片URL",
+            "custom_model": "自定义模型",
+            "api_base": "API地址",
+            "api_key": "API密钥",
+            "timeout": "超时",
+            "seconds": "时长",
             "enable_sample": "切换1080p",
             "image_1_url": "图片1链接",
             "image_2_url": "图片2链接",
             "image_3_url": "图片3链接",
             "input_reference": "编辑参考视频",
             "size": "自定义尺寸",
-            "custom_model": "自定义模型",
-            "api_base": "API地址",
-            "api_key": "API密钥",
-            "timeout": "超时",
         }
 
     RETURN_TYPES = ("STRING", "STRING", "STRING", "INT", "STRING")
@@ -308,9 +336,11 @@ class OmniCreateVideo:
     FUNCTION = "create"
     CATEGORY = "KuAi/Omni"
 
-    def create(self, prompt, model, type, aspect_ratio, seconds, enable_upsample, enable_sample,
-               image_1_url="", image_2_url="", image_3_url="", input_reference="", size="", custom_model="",
-               api_base=OMNI_DEFAULT_API_BASE, api_key="", timeout=1800):
+    def create(self, prompt, model, aspect_ratio, enable_upsample, enhance_prompt=True,
+               image_1="", image_2="", image_urls="", custom_model="",
+               api_base=OMNI_DEFAULT_API_BASE, api_key="", timeout=1800,
+               type="1-文生视频", seconds="8", enable_sample=True,
+               image_1_url="", image_2_url="", image_3_url="", input_reference="", size=""):
         api_key = env_or(api_key, "KUAI_API_KEY")
         if not api_key:
             raise RuntimeError("API Key 未配置，请在节点参数或环境变量 KUAI_API_KEY 中设置")
@@ -324,6 +354,9 @@ class OmniCreateVideo:
             image_2_url=image_2_url,
             image_3_url=image_3_url,
             input_reference=input_reference,
+            image_1=image_1,
+            image_2=image_2,
+            image_urls=image_urls,
         )
         _validate_create_inputs(
             effective_model=effective_model,
