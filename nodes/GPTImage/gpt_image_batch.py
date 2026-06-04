@@ -1,6 +1,5 @@
 """GPT Image 2 batch text-to-image node."""
 
-import hashlib
 import time
 import concurrent.futures
 import re
@@ -300,6 +299,20 @@ def _download_url_bytes(url: str, timeout: int, max_bytes: int = MAX_DOWNLOAD_BY
     return b"".join(chunks), content_type
 
 
+def _next_image_path(out_dir: Path, prefix: str, ext: str, stamp: str) -> tuple[Path, str]:
+    safe_prefix = re.sub(r"[^0-9A-Za-z._-]+", "_", str(prefix or "gpt_image2")).strip("._-") or "gpt_image2"
+    for index in range(1, 10000):
+        filename = f"{safe_prefix}_{stamp}_{index:04d}.{ext}"
+        filepath = out_dir / filename
+        try:
+            with filepath.open("xb"):
+                pass
+            return filepath, filename
+        except FileExistsError:
+            continue
+    raise RuntimeError(f"同一秒内文件序号已用尽: {safe_prefix}_{stamp}")
+
+
 def _download_image(url: str, save_dir: str, prefix: str, image_index: int, timeout: int) -> tuple[str, str]:
     root = _comfy_root()
     out_dir = _safe_output_dir(save_dir)
@@ -309,7 +322,6 @@ def _download_image(url: str, save_dir: str, prefix: str, image_index: int, time
         header, b64 = url.split(",", 1)
         content = base64.b64decode(b64)
         ext = "png"
-        digest_source = b64[:128]
     else:
         content, content_type = _download_url_bytes(url, timeout)
         if "jpeg" in content_type or "jpg" in content_type:
@@ -318,11 +330,9 @@ def _download_image(url: str, save_dir: str, prefix: str, image_index: int, time
             ext = "webp"
         else:
             ext = "png"
-        digest_source = url
 
-    digest = hashlib.md5(digest_source.encode("utf-8", errors="ignore")).hexdigest()[:8]
-    filename = f"{prefix}_{image_index}_{digest}.{ext}"
-    filepath = out_dir / filename
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filepath, filename = _next_image_path(out_dir, f"{prefix}_{image_index}", ext, stamp)
     filepath.write_bytes(content)
     return str(filepath.relative_to(root)), filename
 
