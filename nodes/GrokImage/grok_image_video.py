@@ -1,22 +1,28 @@
 """Grok-image 视频生成节点"""
 
+import io
 import json
 import time
 
 import requests
+from PIL import Image, ImageOps
 
 from ..Sora2.kuai_utils import (
+    download_public_url_bytes,
     ensure_list_from_urls,
     env_or,
     extract_error_message_from_response,
     extract_task_failure_detail,
     http_headers_auth_only,
     http_headers_json,
+    http_headers_multipart,
     json_get,
+    save_image_to_buffer,
 )
 
 
 DEFAULT_API_BASE = "https://ai.kegeai.top"
+DEFAULT_UPLOAD_URL = "https://imageproxy.zhongzhuan.chat/api/upload"
 DEFAULT_MODEL = "grok-imagine-video"
 MODELS = [DEFAULT_MODEL]
 SUCCESS_STATUSES = {"completed", "complete", "success", "succeeded", "succeed", "done"}
@@ -151,10 +157,90 @@ def _build_input_reference(*values):
     return urls
 
 
+def _extract_upload_url(data):
+    if not isinstance(data, dict):
+        return ""
+    return _first_non_empty(
+        data.get("url"),
+        data.get("image_url"),
+        data.get("file_url"),
+        json_get(data, "data.url", ""),
+        json_get(data, "data.image_url", ""),
+        json_get(data, "result.url", ""),
+    )
+
+
+def _image_resample_filter():
+    return getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+
+
+def _download_reference_image(url, index, timeout):
+    label = f"参考图片{index}"
+    raw = download_public_url_bytes(url, timeout=timeout, label=label, max_bytes=10 * 1024 * 1024)
+    try:
+        image = Image.open(io.BytesIO(raw))
+        image.load()
+        return ImageOps.exif_transpose(image).convert("RGB")
+    except Exception as exc:
+        raise RuntimeError(f"{label}下载后无法识别为图片: {exc}")
+
+
+def _compose_reference_images(urls, timeout):
+    images = [_download_reference_image(url, index, timeout) for index, url in enumerate(urls, 1)]
+    count = len(images)
+    cols = count if count <= 2 else 2 if count <= 4 else 3
+    rows = (count + cols - 1) // cols
+    cell = 512
+    gap = 12
+    canvas = Image.new("RGB", (cols * cell + (cols - 1) * gap, rows * cell + (rows - 1) * gap), (255, 255, 255))
+    resample = _image_resample_filter()
+    for index, image in enumerate(images):
+        thumb = image.copy()
+        thumb.thumbnail((cell, cell), resample)
+        col = index % cols
+        row = index // cols
+        x = col * (cell + gap) + (cell - thumb.width) // 2
+        y = row * (cell + gap) + (cell - thumb.height) // 2
+        canvas.paste(thumb, (x, y))
+    return canvas
+
+
+def _upload_composed_reference_image(image, timeout):
+    buf = save_image_to_buffer(image, fmt="jpeg", quality=92)
+    files = {"file": ("grok-image-input-reference.jpg", buf, "image/jpeg")}
+    try:
+        resp = requests.post(DEFAULT_UPLOAD_URL, headers=http_headers_multipart(), files=files, timeout=timeout)
+        if resp.status_code >= 400:
+            detail = extract_error_message_from_response(resp)
+            raise RuntimeError(f"多图参考图上传失败: {detail}")
+        data = resp.json()
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError(f"多图参考图上传失败: {exc}")
+
+    url = _extract_upload_url(data)
+    if not url:
+        raise RuntimeError(f"多图参考图上传响应缺少 url 字段: {json.dumps(data, ensure_ascii=False)}")
+    return url
+
+
+def _prepare_input_reference_for_api(urls, timeout):
+    if not urls:
+        return ""
+    if len(urls) == 1:
+        return urls[0]
+    print(f"[ComfyUI_KuAi_Power] Grok-image 多图参考: 合成 {len(urls)} 张图片后提交")
+    composed = _compose_reference_images(urls, timeout)
+    return _upload_composed_reference_image(composed, timeout)
+
+
 def _multipart_form_fields(payload):
     fields = []
     for key, value in payload.items():
-        if isinstance(value, (list, dict)):
+        if isinstance(value, list):
+            raise RuntimeError(f"{key} 不能提交数组；当前接口要求字符串")
+        if isinstance(value, dict):
             value = json.dumps(value, ensure_ascii=False)
         fields.append((key, (None, str(value))))
     return fields
@@ -317,8 +403,9 @@ class GrokImageVideoGenerate:
         if clean_size:
             payload["size"] = clean_size
 
-        if image_refs:
-            payload["input_reference"] = image_refs
+        input_reference_for_api = _prepare_input_reference_for_api(image_refs, create_timeout)
+        if input_reference_for_api:
+            payload["input_reference"] = input_reference_for_api
         if video:
             payload["video"] = video
 
