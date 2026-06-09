@@ -272,7 +272,7 @@ class GrokImageVideoGenerate:
                 "prompt": ("STRING", {"default": "", "multiline": True, "tooltip": "视频生成提示词"}),
                 "model": (MODELS, {"default": DEFAULT_MODEL, "tooltip": "模型名称"}),
                 "seconds": (["6秒", "10秒", "12秒", "16秒", "20秒"], {"default": "6秒", "tooltip": "视频时长"}),
-                "size": (["1:1", "1:2", "2:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "4:5", "5:4", "21:9", "9:21"], {"default": "16:9", "tooltip": "视频比例"}),
+                "size": (["9:16", "16:9"], {"default": "9:16", "tooltip": "视频比例"}),
                 "api_key": ("STRING", {"default": "", "tooltip": "API密钥；留空使用环境变量 KUAI_API_KEY"}),
             },
             "optional": {
