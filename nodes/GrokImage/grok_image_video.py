@@ -129,7 +129,7 @@ def _normalize_mode(mode, input_reference, video):
         return clean_mode
     if str(video or "").strip():
         return "视频生视频"
-    if str(input_reference or "").strip():
+    if input_reference:
         return "图生视频"
     return "文生视频"
 
@@ -157,16 +157,21 @@ def _normalize_timeout(value, name, minimum=1):
 def _build_input_reference(*values):
     urls = []
     for value in values:
-        for url in ensure_list_from_urls(str(value or "")):
+        for url in ensure_list_from_urls(value or ""):
             if url:
                 urls.append(url)
     if len(urls) > 6:
         raise RuntimeError("input_reference 最多支持 6 张图片")
-    return ",".join(urls)
+    return urls
 
 
 def _multipart_form_fields(payload):
-    return [(key, (None, str(value))) for key, value in payload.items()]
+    fields = []
+    for key, value in payload.items():
+        if isinstance(value, (list, dict)):
+            value = json.dumps(value, ensure_ascii=False)
+        fields.append((key, (None, str(value))))
+    return fields
 
 
 def _check_task_result(data, raw_json):
@@ -208,6 +213,7 @@ class GrokImageVideoGenerate:
                 "input_reference_6": ("STRING", {"default": "", "forceInput": True, "tooltip": "图片6 URL"}),
                 "video": ("STRING", {"default": "", "forceInput": True, "tooltip": "视频 URL；由传视频到临时图床节点输出"}),
                 "api_base": ("STRING", {"default": DEFAULT_API_BASE, "tooltip": "API 地址"}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647, "tooltip": "随机种子；改变 seed 可避免重复提交"}),
                 "create_timeout": ("INT", {"default": 120, "min": 5, "max": 9999, "tooltip": "创建请求超时（秒）"}),
                 "poll_interval_sec": ("INT", {"default": 10, "min": 1, "max": 120, "tooltip": "轮询间隔（秒）"}),
                 "wait_timeout_sec": ("INT", {"default": 1800, "min": 30, "max": 9999, "tooltip": "等待总超时（秒）"}),
@@ -231,6 +237,7 @@ class GrokImageVideoGenerate:
             "input_reference_6": "图片6 URL",
             "video": "视频 URL",
             "api_base": "API地址",
+            "seed": "随机种子",
             "create_timeout": "创建超时",
             "poll_interval_sec": "轮询间隔",
             "wait_timeout_sec": "等待超时",
@@ -291,6 +298,7 @@ class GrokImageVideoGenerate:
         input_reference_6="",
         video="",
         api_base=DEFAULT_API_BASE,
+        seed=0,
         create_timeout=120,
         poll_interval_sec=10,
         wait_timeout_sec=1800,
@@ -301,6 +309,7 @@ class GrokImageVideoGenerate:
 
         prompt = _normalize_prompt(prompt)
         seconds = _normalize_seconds(seconds)
+        seed = _normalize_timeout(seed, "seed", 0)
         create_timeout = _normalize_timeout(create_timeout, "create_timeout", 5)
         poll_interval_sec = _normalize_timeout(poll_interval_sec, "poll_interval_sec", 1)
         wait_timeout_sec = _normalize_timeout(wait_timeout_sec, "wait_timeout_sec", 1)
@@ -320,6 +329,7 @@ class GrokImageVideoGenerate:
             "model": str(model or DEFAULT_MODEL).strip() or DEFAULT_MODEL,
             "prompt": prompt,
             "seconds": seconds,
+            "seed": seed,
         }
         clean_size = str(size or "").strip()
         if clean_size:
