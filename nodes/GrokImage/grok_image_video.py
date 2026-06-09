@@ -19,7 +19,6 @@ from ..Sora2.kuai_utils import (
 DEFAULT_API_BASE = "https://ai.kegeai.top"
 DEFAULT_MODEL = "grok-imagine-video"
 MODELS = [DEFAULT_MODEL]
-GENERATION_MODES = ["自动", "文生视频", "图生视频", "视频生视频"]
 SUCCESS_STATUSES = {"completed", "complete", "success", "succeeded", "succeed", "done"}
 FAILED_STATUSES = {"failed", "failure", "error", "cancelled", "canceled", "cancel", "rejected"}
 
@@ -121,19 +120,6 @@ def _normalize_prompt(prompt):
     return value
 
 
-def _normalize_mode(mode, input_reference, video):
-    clean_mode = str(mode or "自动").strip()
-    if clean_mode not in GENERATION_MODES:
-        raise RuntimeError("生成模式必须是：自动、文生视频、图生视频、视频生视频")
-    if clean_mode != "自动":
-        return clean_mode
-    if str(video or "").strip():
-        return "视频生视频"
-    if input_reference:
-        return "图生视频"
-    return "文生视频"
-
-
 def _normalize_seconds(seconds):
     try:
         value = int(seconds)
@@ -198,7 +184,6 @@ class GrokImageVideoGenerate:
         return {
             "required": {
                 "prompt": ("STRING", {"default": "", "multiline": True, "tooltip": "视频生成提示词"}),
-                "mode": (GENERATION_MODES, {"default": "自动", "tooltip": "自动按输入 URL 判断；也可手动指定"}),
                 "model": (MODELS, {"default": DEFAULT_MODEL, "tooltip": "模型名称"}),
                 "seconds": ("INT", {"default": 10, "min": 1, "max": 60, "tooltip": "视频时长（秒）"}),
                 "size": ("STRING", {"default": "16:9", "tooltip": "视频比例，例如 16:9"}),
@@ -213,10 +198,10 @@ class GrokImageVideoGenerate:
                 "input_reference_6": ("STRING", {"default": "", "forceInput": True, "tooltip": "图片6 URL"}),
                 "video": ("STRING", {"default": "", "forceInput": True, "tooltip": "视频 URL；由传视频到临时图床节点输出"}),
                 "api_base": ("STRING", {"default": DEFAULT_API_BASE, "tooltip": "API 地址"}),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647, "tooltip": "随机种子；改变 seed 可避免重复提交"}),
                 "create_timeout": ("INT", {"default": 120, "min": 5, "max": 9999, "tooltip": "创建请求超时（秒）"}),
                 "poll_interval_sec": ("INT", {"default": 10, "min": 1, "max": 120, "tooltip": "轮询间隔（秒）"}),
                 "wait_timeout_sec": ("INT", {"default": 1800, "min": 30, "max": 9999, "tooltip": "等待总超时（秒）"}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647, "tooltip": "随机种子；改变 seed 可避免重复提交"}),
             },
         }
 
@@ -224,7 +209,6 @@ class GrokImageVideoGenerate:
     def INPUT_LABELS(cls):
         return {
             "prompt": "提示词",
-            "mode": "生成模式",
             "model": "模型",
             "seconds": "时长",
             "size": "比例",
@@ -237,10 +221,10 @@ class GrokImageVideoGenerate:
             "input_reference_6": "图片6 URL",
             "video": "视频 URL",
             "api_base": "API地址",
-            "seed": "随机种子",
             "create_timeout": "创建超时",
             "poll_interval_sec": "轮询间隔",
             "wait_timeout_sec": "等待超时",
+            "seed": "随机种子",
         }
 
     RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "INT", "STRING")
@@ -285,7 +269,6 @@ class GrokImageVideoGenerate:
     def generate(
         self,
         prompt,
-        mode,
         model,
         seconds,
         size,
@@ -298,10 +281,10 @@ class GrokImageVideoGenerate:
         input_reference_6="",
         video="",
         api_base=DEFAULT_API_BASE,
-        seed=0,
         create_timeout=120,
         poll_interval_sec=10,
         wait_timeout_sec=1800,
+        seed=0,
     ):
         api_key = env_or(api_key, "KUAI_API_KEY")
         if not api_key:
@@ -323,7 +306,6 @@ class GrokImageVideoGenerate:
             input_reference_6,
         )
         video = str(video or "").strip()
-        effective_mode = _normalize_mode(mode, image_refs, video)
 
         payload = {
             "model": str(model or DEFAULT_MODEL).strip() or DEFAULT_MODEL,
@@ -335,13 +317,9 @@ class GrokImageVideoGenerate:
         if clean_size:
             payload["size"] = clean_size
 
-        if effective_mode == "图生视频":
-            if not image_refs:
-                raise RuntimeError("图生视频需要至少 1 个 input_reference 图片 URL")
+        if image_refs:
             payload["input_reference"] = image_refs
-        elif effective_mode == "视频生视频":
-            if not video:
-                raise RuntimeError("视频生视频需要 video 视频 URL")
+        if video:
             payload["video"] = video
 
         create_data = self._create_task(payload, api_key, api_base, create_timeout)
