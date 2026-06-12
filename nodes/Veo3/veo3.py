@@ -76,6 +76,11 @@ class VeoText2Video:
             "required": {
                 "prompt": ("STRING", {"default": "", "multiline": True, "tooltip": "视频提示词（支持中英文）"}),
                 "model": ([
+                    "veo_3_1_vip",
+                    "veo_3_1_components_vip",
+                    "veo_3_1_lite_vip",
+                    "veo_3_1_fast_vip",
+                    "veo_3_1_fast_components_vip",
                     "veo_3_1-lite",
                     "veo_3_1-lite-4K",
                     "veo_3_1-fast",
@@ -149,6 +154,11 @@ class VeoImage2Video:
             "required": {
                 "prompt": ("STRING", {"default": "", "multiline": True, "tooltip": "视频提示词（支持中英文）"}),
                 "model": ([
+                    "veo_3_1_vip",
+                    "veo_3_1_components_vip",
+                    "veo_3_1_lite_vip",
+                    "veo_3_1_fast_vip",
+                    "veo_3_1_fast_components_vip",
                     "veo_3_1-lite",
                     "veo_3_1-lite-4K",
                     "veo_3_1-fast",
