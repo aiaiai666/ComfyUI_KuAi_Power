@@ -142,6 +142,12 @@ class GrokVideosCreateVideo:
                     "default": "https://api.kegeai.top",
                     "tooltip": "API端点地址"
                 }),
+                "seed": ("INT", {
+                    "default": 0,
+                    "min": 0,
+                    "max": 2147483647,
+                    "tooltip": "随机种子；改变 seed 可避免重复提交"
+                }),
             }
         }
 
@@ -161,7 +167,7 @@ class GrokVideosCreateVideo:
     FUNCTION = "create"
     CATEGORY = "KuAi/Grok"
 
-    def create(self, prompt, seconds, size, api_key="", input_reference="", api_base="https://api.kegeai.top"):
+    def create(self, prompt, seconds, size, api_key="", seed=0, input_reference="", api_base="https://api.kegeai.top"):
         api_key = env_or(api_key, "KUAI_API_KEY")
         if not api_key:
             raise RuntimeError("API Key 未配置，请在节点参数或环境变量中设置 KUAI_API_KEY")
@@ -178,6 +184,7 @@ class GrokVideosCreateVideo:
             ("prompt", (None, normalized_prompt)),
             ("seconds", (None, normalized_seconds)),
             ("size", (None, normalized_size)),
+            ("seed", (None, str(int(seed) if seed else 0))),
         ]
         if normalized_input_reference:
             files.append(("input_reference", (None, normalized_input_reference)))

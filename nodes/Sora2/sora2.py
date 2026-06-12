@@ -32,6 +32,7 @@ class SoraCreateVideo:
                 "api_base": ("STRING", {"default": "https://ai.kegeai.top", "tooltip": "API端点地址"}),
                 "api_key": ("STRING", {"default": "", "tooltip": "API密钥"}),
                 "timeout": ("INT", {"default": 1800, "min": 5, "max": 9999, "tooltip": "超时时间(秒)"}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647, "tooltip": "随机种子；改变 seed 可避免重复提交"}),
             }
         }
 
@@ -60,7 +61,7 @@ class SoraCreateVideo:
 
     def create(self, images, prompt="", model="sora-2-all", duration_sora2="15", duration_sora2pro="15",
                custom_model="", api_base="https://ai.kegeai.top", api_key="", orientation="portrait",
-               size="large", watermark=False, timeout=120, duration=""):
+               size="large", watermark=False, timeout=120, duration="", seed=0):
         api_key = env_or(api_key, "KUAI_API_KEY")
         endpoint = api_base.rstrip("/") + "/v1/video/create"
 
@@ -83,6 +84,7 @@ class SoraCreateVideo:
             "size": size,
             "duration": validate_sora2_duration(actual_model, selected_duration),
             "watermark": bool(watermark),
+            "seed": int(seed) if seed else 0,
         }
 
         try:
@@ -288,6 +290,7 @@ class SoraText2Video:
                 "size": (["small", "large"], {"default": "large", "tooltip": "视频尺寸"}),
                 "watermark": ("BOOLEAN", {"default": False, "tooltip": "是否添加水印"}),
                 "timeout": ("INT", {"default": 1800, "min": 5, "max": 9999, "tooltip": "超时时间(秒)"}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647, "tooltip": "随机种子；改变 seed 可避免重复提交"}),
             }
         }
 
@@ -312,7 +315,7 @@ class SoraText2Video:
             "timeout": "超时",
         }
 
-    def create(self, prompt, model="sora-2-all", duration_sora2="15", duration_sora2pro="15",
+    def create(self, prompt, model="sora-2-all", duration_sora2="15", duration_sora2pro="15", seed=0,
                custom_model="",
                api_base="https://ai.kegeai.top", api_key="", orientation="portrait", size="large", watermark=False, timeout=120):
         api_key = env_or(api_key, "KUAI_API_KEY")
@@ -338,6 +341,7 @@ class SoraText2Video:
             "size": size,
             "duration": duration,
             "watermark": bool(watermark),
+            "seed": int(seed) if seed else 0,
         }
 
         try:

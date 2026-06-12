@@ -102,6 +102,7 @@ class VeoText2Video:
                 "api_key": ("STRING", {"default": "", "tooltip": "API密钥"}),
                 "timeout": ("INT", {"default": 1800, "min": 5, "max": 9999, "tooltip": "超时时间(秒)"}),
                 "custom_model": ("STRING", {"default": "", "tooltip": "自定义模型名（留空使用下拉模型）"}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647, "tooltip": "随机种子；改变 seed 可避免重复提交"}),
             }
         }
 
@@ -110,7 +111,7 @@ class VeoText2Video:
     FUNCTION = "create"
     CATEGORY = "KuAi/Veo3"
 
-    def create(self, prompt, model, aspect_ratio, enhance_prompt, enable_upsample,
+    def create(self, prompt, model, aspect_ratio, enhance_prompt, enable_upsample, seed=0,
                api_base="https://api.kegeai.top", api_key="", timeout=120, custom_model=""):
 
         api_key = env_or(api_key, "KUAI_API_KEY")
@@ -124,6 +125,7 @@ class VeoText2Video:
             "aspect_ratio": aspect_ratio,
             "enhance_prompt": bool(enhance_prompt),
             "enable_upsample": bool(enable_upsample),
+            "seed": int(seed) if seed else 0,
         }
 
         try:
@@ -185,6 +187,7 @@ class VeoImage2Video:
                 "api_key": ("STRING", {"default": "", "tooltip": "API密钥"}),
                 "timeout": ("INT", {"default": 1800, "min": 5, "max": 9999, "tooltip": "超时时间(秒)"}),
                 "custom_model": ("STRING", {"default": "", "tooltip": "自定义模型名（留空使用下拉模型）"}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647, "tooltip": "随机种子；改变 seed 可避免重复提交"}),
             }
         }
 
@@ -193,7 +196,7 @@ class VeoImage2Video:
     FUNCTION = "create"
     CATEGORY = "KuAi/Veo3"
 
-    def create(self, prompt, model, aspect_ratio, enhance_prompt, enable_upsample,
+    def create(self, prompt, model, aspect_ratio, enhance_prompt, enable_upsample, seed=0,
                image_1="", image_2="", image_3="",
                api_base="https://api.kegeai.top", api_key="", timeout=120, custom_model=""):
 
@@ -217,6 +220,7 @@ class VeoImage2Video:
             "aspect_ratio": aspect_ratio,
             "enhance_prompt": bool(enhance_prompt),
             "enable_upsample": bool(enable_upsample),
+            "seed": int(seed) if seed else 0,
         }
 
         try:

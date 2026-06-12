@@ -111,6 +111,12 @@ class GrokCreateVideo:
                     "default": "https://api.kegeai.top",
                     "tooltip": "API端点地址"
                 }),
+                "seed": ("INT", {
+                    "default": 0,
+                    "min": 0,
+                    "max": 2147483647,
+                    "tooltip": "随机种子；改变 seed 可避免重复提交"
+                }),
             }
         }
 
@@ -125,7 +131,8 @@ class GrokCreateVideo:
             "api_key": "API密钥",
             "image_urls": "参考图片URL",
             "custom_model": "自定义模型",
-            "api_base": "API地址"
+            "api_base": "API地址",
+            "seed": "随机种子",
         }
 
     RETURN_TYPES = ("STRING", "STRING", "STRING")
@@ -133,7 +140,7 @@ class GrokCreateVideo:
     FUNCTION = "create"
     CATEGORY = "KuAi/Grok"
 
-    def create(self, prompt, model, aspect_ratio, size, enhance_prompt, api_key="", image_urls="", api_base="https://api.kegeai.top", custom_model=""):
+    def create(self, prompt, model, aspect_ratio, size, enhance_prompt, api_key="", seed=0, image_urls="", api_base="https://api.kegeai.top", custom_model=""):
         """创建 Grok 视频生成任务"""
         api_key = env_or(api_key, "KUAI_API_KEY")
         if not api_key:
@@ -161,7 +168,8 @@ class GrokCreateVideo:
             "aspect_ratio": aspect_ratio,
             "size": effective_size,
             "enhance_prompt": bool(enhance_prompt),
-            "images": images
+            "images": images,
+            "seed": int(seed) if seed else 0,
         }
 
         print(f"[ComfyUI_KuAi_Power] Grok 创建视频任务: {prompt[:50]}...")
@@ -464,6 +472,12 @@ class GrokImage2Video:
                     "default": "https://ai.kegeai.top",
                     "tooltip": "API端点地址"
                 }),
+                "seed": ("INT", {
+                    "default": 0,
+                    "min": 0,
+                    "max": 2147483647,
+                    "tooltip": "随机种子；改变 seed 可避免重复提交"
+                }),
             }
         }
 
@@ -484,7 +498,7 @@ class GrokImage2Video:
     FUNCTION = "create"
     CATEGORY = "KuAi/Grok"
 
-    def create(self, prompt, model="grok-videos", seconds="6", size="16:9", api_key="",
+    def create(self, prompt, model="grok-videos", seconds="6", size="16:9", api_key="", seed=0,
                input_reference="", api_base="https://ai.kegeai.top",
                aspect_ratio=None, enhance_prompt=True, image_url_1="", image_url_2="", image_url_3="",
                custom_model="", images=""):
@@ -631,6 +645,12 @@ class GrokImage2VideoUnified:
                     "default": "https://ai.kegeai.top",
                     "tooltip": "API端点地址"
                 }),
+                "seed": ("INT", {
+                    "default": 0,
+                    "min": 0,
+                    "max": 2147483647,
+                    "tooltip": "随机种子；改变 seed 可避免重复提交"
+                }),
             }
         }
 
@@ -653,7 +673,7 @@ class GrokImage2VideoUnified:
     CATEGORY = "KuAi/Grok"
 
     def create(self, model="grok-video-3", prompt="", seconds="6", aspect_ratio="3:2", size="720P",
-               images="", api_key="", api_base="https://ai.kegeai.top", custom_model=""):
+               images="", api_key="", seed=0, api_base="https://ai.kegeai.top", custom_model=""):
         """使用 /v1/video/create 统一格式创建 Grok 图生视频任务"""
         api_key = env_or(api_key, "KUAI_API_KEY")
         if not api_key:
@@ -692,6 +712,7 @@ class GrokImage2VideoUnified:
             "aspect_ratio": normalized_aspect_ratio,
             "size": normalized_size,
             "images": image_list,
+            "seed": int(seed) if seed else 0,
         }
 
         print(f"[ComfyUI_KuAi_Power] Grok 统一格式图生视频任务: {normalized_prompt[:50]}...")
@@ -918,6 +939,12 @@ class GrokText2Video:
                     "default": "",
                     "tooltip": "自定义模型（留空使用下拉模型）"
                 }),
+                "seed": ("INT", {
+                    "default": 0,
+                    "min": 0,
+                    "max": 2147483647,
+                    "tooltip": "随机种子；改变 seed 可避免重复提交"
+                }),
             }
         }
 
@@ -939,7 +966,7 @@ class GrokText2Video:
     FUNCTION = "create"
     CATEGORY = "KuAi/Grok"
 
-    def create(self, prompt, model, aspect_ratio, size, enhance_prompt=True, api_key="", api_base="https://api.kegeai.top", custom_model=""):
+    def create(self, prompt, model, aspect_ratio, size, enhance_prompt=True, api_key="", seed=0, api_base="https://api.kegeai.top", custom_model=""):
         """创建 Grok 文生视频任务"""
         api_key = env_or(api_key, "KUAI_API_KEY")
         if not api_key:
@@ -964,7 +991,8 @@ class GrokText2Video:
             "aspect_ratio": aspect_ratio,
             "size": effective_size,
             "enhance_prompt": bool(enhance_prompt),
-            "images": []  # 文生视频不需要图片
+            "images": [],
+            "seed": int(seed) if seed else 0,
         }
 
         print(f"[ComfyUI_KuAi_Power] Grok 文生视频任务: {prompt[:50]}...")

@@ -75,6 +75,12 @@ class KlingText2Video:
                     "max": 600,
                     "tooltip": "超时时间(秒)"
                 }),
+                "seed": ("INT", {
+                    "default": 0,
+                    "min": 0,
+                    "max": 2147483647,
+                    "tooltip": "随机种子；改变 seed 可避免重复提交"
+                }),
             }
         }
 
@@ -101,7 +107,7 @@ class KlingText2Video:
             "timeout": "超时",
         }
 
-    def create(self, prompt, model_name="kling-v2-6", mode="std", duration="5", aspect_ratio="16:9",
+    def create(self, prompt, model_name="kling-v2-6", mode="std", duration="5", aspect_ratio="16:9", seed=0,
                custom_model="", negative_prompt="", cfg_scale=0.5, multi_shot=False, watermark=False,
                api_key="", api_base="https://ai.kegeai.top", timeout=120):
         """创建文生视频任务"""
@@ -127,7 +133,8 @@ class KlingText2Video:
             "multi_shot": multi_shot,
             "watermark_info": {
                 "enabled": watermark
-            }
+            },
+            "seed": int(seed) if seed else 0,
         }
 
         # 添加可选参数
@@ -232,6 +239,12 @@ class KlingImage2Video:
                     "max": 600,
                     "tooltip": "超时时间(秒)"
                 }),
+                "seed": ("INT", {
+                    "default": 0,
+                    "min": 0,
+                    "max": 2147483647,
+                    "tooltip": "随机种子；改变 seed 可避免重复提交"
+                }),
             }
         }
 
@@ -259,7 +272,7 @@ class KlingImage2Video:
             "timeout": "超时",
         }
 
-    def create(self, image, model_name="kling-v2-6", mode="std", duration="5",
+    def create(self, image, model_name="kling-v2-6", mode="std", duration="5", seed=0,
                custom_model="", prompt="", image_tail="", negative_prompt="", cfg_scale=0.5, multi_shot=False, watermark=False,
                api_key="", api_base="https://ai.kegeai.top", timeout=120):
         """创建图生视频任务"""
@@ -287,7 +300,8 @@ class KlingImage2Video:
             "multi_shot": multi_shot,
             "watermark_info": {
                 "enabled": watermark
-            }
+            },
+            "seed": int(seed) if seed else 0,
         }
 
         # 添加可选参数

@@ -137,15 +137,16 @@ def _validate_common(model, resolution, ratio, duration):
     return duration_int
 
 
-def build_payload(model, prompt, image_urls, resolution, ratio, duration, watermark):
+def build_payload(model, prompt, image_urls, resolution, ratio, duration, watermark, seed=0):
     duration_int = _validate_common(model, resolution, ratio, duration)
     prompt_clean = str(prompt or "").strip()
     urls = [str(u or "").strip() for u in (image_urls or []) if str(u or "").strip()]
+    seed_int = int(seed) if seed else 0
 
     if model == "happyhorse-1.0-t2v":
         if not prompt_clean:
             raise RuntimeError("提示词不能为空")
-        payload = {"model": model, "input": {"prompt": prompt_clean}, "parameters": {"resolution": resolution, "ratio": ratio, "duration": duration_int, "watermark": bool(watermark)}}
+        payload = {"model": model, "input": {"prompt": prompt_clean}, "parameters": {"resolution": resolution, "ratio": ratio, "duration": duration_int, "watermark": bool(watermark), "seed": seed_int}}
     elif model == "happyhorse-1.0-i2v":
         if not urls:
             raise RuntimeError("首帧图片URL不能为空")
@@ -153,14 +154,14 @@ def build_payload(model, prompt, image_urls, resolution, ratio, duration, waterm
         input_payload = {"media": [{"type": "first_frame", "url": first_url}]}
         if prompt_clean:
             input_payload["prompt"] = prompt_clean
-        payload = {"model": model, "input": input_payload, "parameters": {"resolution": resolution, "duration": duration_int, "watermark": bool(watermark)}}
+        payload = {"model": model, "input": input_payload, "parameters": {"resolution": resolution, "duration": duration_int, "watermark": bool(watermark), "seed": seed_int}}
     else:
         if not prompt_clean:
             raise RuntimeError("提示词不能为空")
         if not 1 <= len(urls) <= 9:
             raise RuntimeError("参考图数量必须为 1～9")
         media = [{"type": "reference_image", "url": _validate_http_url(u, f"参考图URL {idx}")} for idx, u in enumerate(urls, 1)]
-        payload = {"model": model, "input": {"prompt": prompt_clean, "media": media}, "parameters": {"resolution": resolution, "ratio": ratio, "duration": duration_int, "watermark": bool(watermark)}}
+        payload = {"model": model, "input": {"prompt": prompt_clean, "media": media}, "parameters": {"resolution": resolution, "ratio": ratio, "duration": duration_int, "watermark": bool(watermark), "seed": seed_int}}
     return payload
 
 
@@ -343,13 +344,14 @@ class HappyHorseVideoCreate(_BaseHappyHorse):
             **{f"image_url_{i}": ("STRING", {"default": "", "forceInput": True, "tooltip": f"公网图片 URL {i}"}) for i in range(1, 10)},
             "api_base": ("STRING", {"default": DEFAULT_API_BASE}),
             "timeout": ("INT", {"default": 60, "min": 5, "max": 600}),
+            "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647, "tooltip": "随机种子；改变 seed 可避免重复提交"}),
         }
         return {"required": required, "optional": optional}
 
-    def create(self, model, prompt, reference_image_count, resolution, ratio, duration, watermark, api_key, image_url_1="", image_url_2="", image_url_3="", image_url_4="", image_url_5="", image_url_6="", image_url_7="", image_url_8="", image_url_9="", api_base=DEFAULT_API_BASE, timeout=60):
+    def create(self, model, prompt, reference_image_count, resolution, ratio, duration, watermark, api_key, seed=0, image_url_1="", image_url_2="", image_url_3="", image_url_4="", image_url_5="", image_url_6="", image_url_7="", image_url_8="", image_url_9="", api_base=DEFAULT_API_BASE, timeout=60):
         kwargs = locals()
         image_urls = _first_n_image_urls(kwargs, reference_image_count) if model == "happyhorse-1.0-r2v" else _all_image_urls_from_kwargs(kwargs)
-        payload = build_payload(model, prompt, image_urls, resolution, ratio, duration, watermark)
+        payload = build_payload(model, prompt, image_urls, resolution, ratio, duration, watermark, seed)
         task_id, status, raw = create_task(api_base, self._require_api_key(api_key), payload, timeout)
         return (task_id, status, json.dumps(raw, ensure_ascii=False))
 
@@ -384,10 +386,10 @@ class HappyHorseVideoAndWait(HappyHorseVideoCreate):
         data["optional"] = optional
         return data
 
-    def run(self, model, prompt, reference_image_count, resolution, ratio, duration, watermark, api_key, image_url_1="", image_url_2="", image_url_3="", image_url_4="", image_url_5="", image_url_6="", image_url_7="", image_url_8="", image_url_9="", api_base=DEFAULT_API_BASE, create_timeout=60, poll_interval_sec=10, wait_timeout_sec=1800, save_video=True, save_dir="output/happyhorse", filename_prefix="happyhorse", download_timeout=1800):
+    def run(self, model, prompt, reference_image_count, resolution, ratio, duration, watermark, api_key, seed=0, image_url_1="", image_url_2="", image_url_3="", image_url_4="", image_url_5="", image_url_6="", image_url_7="", image_url_8="", image_url_9="", api_base=DEFAULT_API_BASE, create_timeout=60, poll_interval_sec=10, wait_timeout_sec=1800, save_video=True, save_dir="output/happyhorse", filename_prefix="happyhorse", download_timeout=1800):
         kwargs = locals()
         image_urls = _first_n_image_urls(kwargs, reference_image_count) if model == "happyhorse-1.0-r2v" else _all_image_urls_from_kwargs(kwargs)
-        payload = build_payload(model, prompt, image_urls, resolution, ratio, duration, watermark)
+        payload = build_payload(model, prompt, image_urls, resolution, ratio, duration, watermark, seed)
         return self._create_wait_download(payload, api_key, api_base, create_timeout, poll_interval_sec, wait_timeout_sec, save_video, save_dir, filename_prefix, download_timeout)
 
 
