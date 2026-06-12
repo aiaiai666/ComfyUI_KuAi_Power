@@ -57,6 +57,7 @@ class GrokImageGenerate:
                 "api_key": ("STRING", {"default": "", "tooltip": "API密钥（留空使用环境变量 KUAI_API_KEY）"}),
             },
             "optional": {
+                "custom_model": ("STRING", {"default": "", "tooltip": "自定义模型名（留空使用下拉模型）"}),
                 "api_base": ("STRING", {"default": "https://api.kegeai.top", "tooltip": "API服务器地址"}),
                 "timeout": ("INT", {"default": 120, "min": 1, "max": 1800, "tooltip": "超时时间(秒)"}),
             },
@@ -69,6 +70,7 @@ class GrokImageGenerate:
             "model": "模型",
             "size": "尺寸",
             "api_key": "API密钥",
+            "custom_model": "自定义模型",
             "api_base": "API地址",
             "timeout": "超时",
         }
@@ -78,14 +80,15 @@ class GrokImageGenerate:
     FUNCTION = "generate"
     CATEGORY = "KuAi/GrokImage"
 
-    def generate(self, prompt, model, size, api_key, api_base="https://api.kegeai.top", timeout=120):
+    def generate(self, prompt, model, size, api_key, custom_model="", api_base="https://api.kegeai.top", timeout=120):
         api_key = env_or(api_key, "KUAI_API_KEY")
         if not api_key:
             raise RuntimeError("API Key 未配置")
         if not str(prompt).strip():
             raise RuntimeError("提示词不能为空")
 
-        payload = {"model": model, "prompt": prompt, "size": size}
+        effective_model = (custom_model or "").strip() or model
+        payload = {"model": effective_model, "prompt": prompt, "size": size}
         try:
             resp = requests.post(
                 f"{api_base.rstrip('/')}/v1/images/generations",
@@ -117,6 +120,7 @@ class GrokImageEdit:
                 "api_key": ("STRING", {"default": "", "tooltip": "API密钥（留空使用环境变量 KUAI_API_KEY）"}),
             },
             "optional": {
+                "custom_model": ("STRING", {"default": "", "tooltip": "自定义模型名（留空使用下拉模型）"}),
                 "aspect_ratio": (ASPECT_RATIOS, {"default": "auto", "tooltip": "输出宽高比"}),
                 "response_format": (RESPONSE_FORMATS, {"default": "url", "tooltip": "返回格式"}),
                 "resolution": (RESOLUTIONS, {"default": "2k", "tooltip": "输出分辨率"}),
@@ -134,6 +138,7 @@ class GrokImageEdit:
             "prompt": "提示词",
             "model": "模型",
             "api_key": "API密钥",
+            "custom_model": "自定义模型",
             "aspect_ratio": "宽高比",
             "response_format": "返回格式",
             "resolution": "分辨率",
@@ -154,6 +159,7 @@ class GrokImageEdit:
         prompt,
         model,
         api_key,
+        custom_model="",
         aspect_ratio="auto",
         response_format="url",
         resolution="2k",
@@ -171,9 +177,10 @@ class GrokImageEdit:
         if not str(prompt).strip():
             raise RuntimeError("提示词不能为空")
 
+        effective_model = (custom_model or "").strip() or model
         data_payload = {
             "image": image,
-            "model": model,
+            "model": effective_model,
             "prompt": prompt,
             "aspect_ratio": aspect_ratio,
             "response_format": response_format,

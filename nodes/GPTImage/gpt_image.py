@@ -160,6 +160,7 @@ class GPTImage2Generate:
                 "api_key": ("STRING", {"default": "", "tooltip": "API密钥（留空使用环境变量 KUAI_API_KEY）"}),
             },
             "optional": {
+                "custom_model": ("STRING", {"default": "", "tooltip": "自定义模型名（留空使用下拉模型）"}),
                 "api_base": ("STRING", {"default": "https://ai.kegeai.top", "tooltip": "API服务器地址"}),
                 "timeout": ("INT", {"default": 1800, "min": 30, "max": 9999, "tooltip": "超时时间(秒)"}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "control_after_generate": True, "tooltip": "ComfyUI workflow random seed; refreshes each queued task and is not sent to the GPT Image 2 API."}),
@@ -174,6 +175,7 @@ class GPTImage2Generate:
             "model": "模型",
             "size": "图像尺寸（分辨率/比例）",
             "n": "生成数量（输出图片张数）",
+            "custom_model": "自定义模型",
             "api_key": "API密钥",
             "api_base": "API地址",
             "timeout": "超时",
@@ -184,14 +186,15 @@ class GPTImage2Generate:
     FUNCTION = "generate"
     CATEGORY = "KuAi/GPTImage"
 
-    def generate(self, prompt, model, size, n, api_key, api_base="https://ai.kegeai.top", timeout=1800, seed=0):
+    def generate(self, prompt, model, size, n, api_key, custom_model="", api_base="https://ai.kegeai.top", timeout=1800, seed=0):
         api_key = env_or(api_key, "KUAI_API_KEY")
         if not api_key:
             raise RuntimeError("API Key 未配置，请在节点参数或环境变量 KUAI_API_KEY 中设置")
         if not prompt.strip():
             raise RuntimeError("提示词不能为空")
 
-        payload = {"model": model, "prompt": prompt, "n": n, "size": SIZE_MAP.get(size, size)}
+        effective_model = (custom_model or "").strip() or model
+        payload = {"model": effective_model, "prompt": prompt, "n": n, "size": SIZE_MAP.get(size, size)}
         resp = requests.post(
             f"{api_base.rstrip('/')}/v1/images/generations",
             json=payload,
@@ -219,6 +222,7 @@ class GPTImage2Edit:
                 **_edit_image_url_inputs(),
                 "prompt": ("STRING", {"multiline": True, "default": "", "tooltip": "编辑描述提示词"}),
                 "model": (EDIT_MODELS, {"default": "gpt-image-2", "tooltip": "模型选择"}),
+                "custom_model": ("STRING", {"default": "", "tooltip": "自定义模型名（留空使用下拉模型）"}),
                 "size": (SIZES, {"default": "auto（默认）", "tooltip": "输出图像尺寸（分辨率、比例与用途）"}),
                 "n": ("INT", {"default": 1, "min": 1, "max": 10, "tooltip": "生成数量（输出图片张数，1-10张）"}),
                 "api_key": ("STRING", {"default": "", "tooltip": "API密钥（留空使用环境变量 KUAI_API_KEY）"}),
@@ -238,6 +242,7 @@ class GPTImage2Edit:
             **{f"image_url_{i}": f"图片URL {i}（参考图）" for i in range(1, EDIT_IMAGE_URL_COUNT + 1)},
             "prompt": "编辑提示词（修改要求）",
             "model": "模型（GPT Image 2）",
+            "custom_model": "自定义模型",
             "size": "图像尺寸（分辨率/比例）",
             "n": "生成数量（输出图片张数）",
             "api_key": "API密钥",
@@ -255,7 +260,7 @@ class GPTImage2Edit:
     FUNCTION = "edit"
     CATEGORY = "KuAi/GPTImage"
 
-    def edit(self, image_url_1="", prompt="", model="gpt-image-2", size="auto（默认）", n=1, api_key="",
+    def edit(self, image_url_1="", prompt="", model="gpt-image-2", custom_model="", size="auto（默认）", n=1, api_key="",
              image_url_2="", image_url_3="", image_url_4="",
              format="png", quality="auto", background="auto", moderation="auto",
              api_base="https://ai.kegeai.top", timeout=1800, seed=0, **kwargs):
@@ -280,8 +285,9 @@ class GPTImage2Edit:
             content = download_public_url_bytes(url, timeout=timeout, label=f"图片URL {i + 1}")
             files.append(("image[]", (f"image_{i}.png", content, "image/png")))
 
+        effective_model = (custom_model or "").strip() or model
         form_data = {
-            "model": model,
+            "model": effective_model,
             "prompt": prompt,
             "n": str(n),
             "size": SIZE_MAP.get(size, size),

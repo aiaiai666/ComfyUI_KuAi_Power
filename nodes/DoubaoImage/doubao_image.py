@@ -306,6 +306,7 @@ class _BaseDoubaoImage:
         labels = {
             "prompt": "提示词",
             "model": "模型",
+            "custom_model": "自定义模型",
             "size_mode": "尺寸模式",
             "resolution": "分辨率",
             "custom_size": "自定义尺寸",
@@ -327,6 +328,7 @@ class _BaseDoubaoImage:
     @classmethod
     def _common_optional_inputs(cls):
         optional = {
+            "custom_model": ("STRING", {"default": "", "tooltip": "自定义模型名（留空使用下拉模型）"}),
             "image_count": ("INT", {"default": 0, "min": 0, "max": 14, "tooltip": "使用前 N 个图片URL。文生图填 0。"}),
         }
         optional.update({
@@ -354,6 +356,7 @@ class _BaseDoubaoImage:
         custom_size,
         watermark,
         api_key,
+        custom_model="",
         image_count=0,
         seed=-1,
         guidance_scale=2.5,
@@ -366,8 +369,9 @@ class _BaseDoubaoImage:
         **kwargs,
     ):
         image_urls = [kwargs.get(f"image_url_{i}", "") for i in range(1, 15)]
+        effective_model = (custom_model or "").strip() or model
         payload = build_payload(
-            model=model,
+            model=effective_model,
             prompt=prompt,
             image_count=image_count,
             image_urls=image_urls,
@@ -423,16 +427,7 @@ class DoubaoImageGenerate(_BaseDoubaoImage):
                 "watermark": ("BOOLEAN", {"default": False}),
                 "api_key": ("STRING", {"default": ""}),
             },
-            "optional": {
-                "seed": ("INT", {"default": -1, "min": -1, "max": 2147483647}),
-                "guidance_scale": ("FLOAT", {"default": 2.5, "min": 1.0, "max": 10.0, "step": 0.1}),
-                "sequential_image_generation": (SEQUENTIAL_MODES, {"default": "disabled"}),
-                "max_images": ("INT", {"default": 3, "min": 1, "max": 15}),
-                "output_format": (OUTPUT_FORMATS, {"default": "jpeg"}),
-                "response_format": (RESPONSE_FORMATS, {"default": "url"}),
-                "api_base": ("STRING", {"default": DEFAULT_API_BASE}),
-                "timeout": ("INT", {"default": 120, "min": 1, "max": 1800}),
-            },
+            "optional": cls._common_optional_inputs(),
         }
 
     def generate(self, prompt, model, size_mode, resolution, custom_size, watermark, api_key, **kwargs):
@@ -460,6 +455,7 @@ class DoubaoImageEdit(_BaseDoubaoImage):
                 "image_url_1": ("STRING", {"default": "", "forceInput": True}),
             },
             "optional": {
+                "custom_model": ("STRING", {"default": "", "tooltip": "自定义模型名（留空使用下拉模型）"}),
                 **{
                     f"image_url_{i}": ("STRING", {"default": "", "forceInput": True})
                     for i in range(2, 15)

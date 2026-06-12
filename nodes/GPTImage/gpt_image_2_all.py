@@ -61,6 +61,7 @@ class GPTImage2AllGenerate:
                 "api_key": ("STRING", {"default": "", "tooltip": "API密钥（留空使用环境变量 KUAI_API_KEY）"}),
             },
             "optional": {
+                "custom_model": ("STRING", {"default": "", "tooltip": "自定义模型名（留空使用下拉模型）"}),
                 "api_base": ("STRING", {"default": "https://ai.kegeai.top", "tooltip": "API服务器地址"}),
                 "timeout": ("INT", {"default": 120, "min": 1, "max": 1800, "tooltip": "超时时间(秒)"}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "control_after_generate": True, "tooltip": "ComfyUI 工作流随机种子；仅用于每次提交任务时刷新执行，不会发送给 gpt-image-2-all API。"}),
@@ -77,6 +78,7 @@ class GPTImage2AllGenerate:
         return {
             "prompt": "提示词",
             "model": "模型",
+            "custom_model": "自定义模型",
             "size": "图像尺寸",
             "n": "生成数量",
             "api_key": "API密钥",
@@ -102,6 +104,7 @@ class GPTImage2AllGenerate:
         size,
         n,
         api_key,
+        custom_model="",
         api_base="https://ai.kegeai.top",
         timeout=120,
         seed=0,
@@ -118,8 +121,9 @@ class GPTImage2AllGenerate:
             raise RuntimeError("提示词不能为空")
 
         image_urls = _collect_image_urls(image_url_1, image_url_2, image_url_3, image_url_4, image_url_5)
+        effective_model = (custom_model or "").strip() or model
         payload = {
-            "model": model,
+            "model": effective_model,
             "size": SIZE_MAP.get(size, size),
             "n": n,
             "prompt": prompt,
@@ -154,6 +158,7 @@ class GPTImage2AllEdit:
                 "api_key": ("STRING", {"default": "", "tooltip": "API密钥（留空使用环境变量 KUAI_API_KEY）"}),
             },
             "optional": {
+                "custom_model": ("STRING", {"default": "", "tooltip": "自定义模型名（留空使用下拉模型）"}),
                 "image_url_2": ("STRING", {"default": "", "tooltip": "第2张图片URL"}),
                 "image_url_3": ("STRING", {"default": "", "tooltip": "第3张图片URL"}),
                 "image_url_4": ("STRING", {"default": "", "tooltip": "第4张图片URL"}),
@@ -170,6 +175,7 @@ class GPTImage2AllEdit:
             "image_url_1": "图片URL1",
             "prompt": "提示词",
             "model": "模型",
+            "custom_model": "自定义模型",
             "size": "图像尺寸",
             "n": "生成数量",
             "api_key": "API密钥",
@@ -195,6 +201,7 @@ class GPTImage2AllEdit:
         size,
         n,
         api_key,
+        custom_model="",
         image_url_2="",
         image_url_3="",
         image_url_4="",
@@ -219,8 +226,9 @@ class GPTImage2AllEdit:
         if not prompt.strip():
             raise RuntimeError("提示词不能为空")
 
+        effective_model = (custom_model or "").strip() or model
         payload = {
-            "model": model,
+            "model": effective_model,
             "size": SIZE_MAP.get(size, size),
             "n": n,
             "prompt": prompt,

@@ -276,6 +276,7 @@ class GrokImageVideoGenerate:
                 "api_key": ("STRING", {"default": "", "tooltip": "API密钥；留空使用环境变量 KUAI_API_KEY"}),
             },
             "optional": {
+                "custom_model": ("STRING", {"default": "", "tooltip": "自定义模型名（留空使用下拉模型）"}),
                 "input_reference": ("STRING", {"default": "", "forceInput": True, "tooltip": "图片1 URL；由传图到临时图床节点输出"}),
                 "input_reference_2": ("STRING", {"default": "", "forceInput": True, "tooltip": "图片2 URL"}),
                 "input_reference_3": ("STRING", {"default": "", "forceInput": True, "tooltip": "图片3 URL"}),
@@ -296,6 +297,7 @@ class GrokImageVideoGenerate:
         return {
             "prompt": "提示词",
             "model": "模型",
+            "custom_model": "自定义模型",
             "seconds": "时长",
             "size": "比例",
             "api_key": "API密钥",
@@ -359,6 +361,7 @@ class GrokImageVideoGenerate:
         seconds,
         size,
         api_key,
+        custom_model="",
         input_reference="",
         input_reference_2="",
         input_reference_3="",
@@ -382,6 +385,7 @@ class GrokImageVideoGenerate:
         create_timeout = _normalize_timeout(create_timeout, "create_timeout", 5)
         poll_interval_sec = _normalize_timeout(poll_interval_sec, "poll_interval_sec", 1)
         wait_timeout_sec = _normalize_timeout(wait_timeout_sec, "wait_timeout_sec", 1)
+        effective_model = (custom_model or "").strip() or model
         api_base = str(api_base or DEFAULT_API_BASE).rstrip("/")
         image_refs = _build_input_reference(
             input_reference,
@@ -394,7 +398,7 @@ class GrokImageVideoGenerate:
         video = str(video or "").strip()
 
         payload = {
-            "model": str(model or DEFAULT_MODEL).strip() or DEFAULT_MODEL,
+            "model": str(effective_model or DEFAULT_MODEL).strip() or DEFAULT_MODEL,
             "prompt": prompt,
             "seconds": seconds,
             "seed": seed,
