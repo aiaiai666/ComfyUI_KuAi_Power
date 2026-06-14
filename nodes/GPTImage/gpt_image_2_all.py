@@ -1,5 +1,6 @@
 """gpt-image-2-all 节点"""
 
+import base64
 import io
 import json
 
@@ -27,22 +28,48 @@ SIZE_MAP = {
 }
 
 
-def _extract_generation_result(payload: dict):
-    """从 API 响应中提取图片 URL 列表"""
-    items = payload.get("data") or []
-    urls = [item.get("url", "").strip() for item in items if item.get("url")]
-    if not urls:
-        raise RuntimeError(f"响应中没有图像URL: {json.dumps(payload, ensure_ascii=False)}")
-    return urls
+def _payload_image_to_tensor(image_value: str, timeout: int) -> torch.Tensor:
+    """? API ??? base64?data URL ? URL ?? ComfyUI IMAGE tensor"""
+    value = str(image_value or "").strip()
+    if not value:
+        raise RuntimeError("?????????")
 
+    if value.startswith("http://") or value.startswith("https://"):
+        resp = requests.get(value, timeout=timeout)
+        resp.raise_for_status()
+        image_bytes = resp.content
+    else:
+        if value.startswith("data:"):
+            _, _, value = value.partition(",")
+        try:
+            image_bytes = base64.b64decode(value, validate=True)
+        except Exception as exc:
+            raise RuntimeError(f"???????? base64 ? URL: {exc}") from exc
 
-def _url_to_tensor(url: str, timeout: int) -> torch.Tensor:
-    """从 URL 下载图片并转换为 ComfyUI IMAGE tensor"""
-    resp = requests.get(url, timeout=timeout)
-    resp.raise_for_status()
-    pil = Image.open(io.BytesIO(resp.content)).convert("RGB")
+    pil = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     arr = np.array(pil).astype(np.float32) / 255.0
     return torch.from_numpy(arr)[None, ...]
+
+
+def _extract_generation_result(payload: dict):
+    """? API ????????????"""
+    items = payload.get("data") or []
+    image_values = []
+    for item in items:
+        value = (
+            item.get("b64_json")
+            or item.get("base64")
+            or item.get("image_base64")
+            or item.get("image")
+            or item.get("url")
+            or ""
+        )
+        value = str(value).strip()
+        if value:
+            image_values.append(value)
+    if not image_values:
+        raise RuntimeError(f"?????????: {json.dumps(payload, ensure_ascii=False)}")
+    return image_values
 
 
 def _collect_image_urls(*image_urls) -> list:
@@ -138,11 +165,11 @@ class GPTImage2AllGenerate:
         raise_for_bad_status(resp, "gpt-image-2-all生图失败")
         data = resp.json()
 
-        urls = _extract_generation_result(data)
+        image_values = _extract_generation_result(data)
         revised = [str(item.get("revised_prompt", "")) for item in (data.get("data") or [])]
         raw = json.dumps(data, ensure_ascii=False)
-        image = torch.cat([_url_to_tensor(url, timeout) for url in urls], dim=0)
-        return (image, "\n".join(urls), "\n".join(revised), raw)
+        image = torch.cat([_payload_image_to_tensor(value, timeout) for value in image_values], dim=0)
+        return (image, "\n".join(image_values), "\n".join(revised), raw)
 
 
 class GPTImage2AllEdit:
@@ -243,8 +270,8 @@ class GPTImage2AllEdit:
         raise_for_bad_status(resp, "gpt-image-2-all编辑图失败")
         data = resp.json()
 
-        urls = _extract_generation_result(data)
+        image_values = _extract_generation_result(data)
         revised = [str(item.get("revised_prompt", "")) for item in (data.get("data") or [])]
         raw = json.dumps(data, ensure_ascii=False)
-        image = torch.cat([_url_to_tensor(url, timeout) for url in urls], dim=0)
-        return (image, "\n".join(urls), "\n".join(revised), raw)
+        image = torch.cat([_payload_image_to_tensor(value, timeout) for value in image_values], dim=0)
+        return (image, "\n".join(image_values), "\n".join(revised), raw)
