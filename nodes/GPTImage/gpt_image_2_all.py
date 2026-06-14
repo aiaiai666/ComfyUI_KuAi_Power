@@ -16,11 +16,31 @@ SIZES = [
     "1024x1024（1:1）",
     "1536x1024（3:2）",
     "1024x1536（2:3）",
+    "1024x512（2:1）",
+    "512x1024（1:2）",
+    "1024x576（16:9）",
+    "576x1024（9:16）",
+    "1024x768（4:3）",
+    "768x1024（3:4）",
+    "1280x1024（5:4）",
+    "1024x1280（4:5）",
+    "1792x768（21:9）",
+    "768x1792（9:21）",
 ]
 SIZE_MAP = {
     "1024x1024（1:1）": "1024x1024",
     "1536x1024（3:2）": "1536x1024",
     "1024x1536（2:3）": "1024x1536",
+    "1024x512（2:1）": "1024x512",
+    "512x1024（1:2）": "512x1024",
+    "1024x576（16:9）": "1024x576",
+    "576x1024（9:16）": "576x1024",
+    "1024x768（4:3）": "1024x768",
+    "768x1024（3:4）": "768x1024",
+    "1280x1024（5:4）": "1280x1024",
+    "1024x1280（4:5）": "1024x1280",
+    "1792x768（21:9）": "1792x768",
+    "768x1792（9:21）": "768x1792",
     # Legacy raw values kept so existing saved workflows continue to run.
     "1024x1024": "1024x1024",
     "1536x1024": "1536x1024",
@@ -42,7 +62,9 @@ def _payload_image_to_tensor(image_value: str, timeout: int) -> torch.Tensor:
         if value.startswith("data:"):
             _, _, value = value.partition(",")
         try:
-            image_bytes = base64.b64decode(value, validate=True)
+            b = value.replace("-", "+").replace("_", "/")
+            b += "=" * (-len(b) % 4)
+            image_bytes = base64.b64decode(b)
         except Exception as exc:
             raise RuntimeError(f"???????? base64 ? URL: {exc}") from exc
 
