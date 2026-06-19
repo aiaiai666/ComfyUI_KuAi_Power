@@ -23,8 +23,8 @@ from ..Sora2.kuai_utils import (
 
 DEFAULT_API_BASE = "https://ai.kegeai.top"
 DEFAULT_UPLOAD_URL = "https://imageproxy.zhongzhuan.chat/api/upload"
-DEFAULT_MODEL = "grok-imagine-1.0-video"
-MODELS = [DEFAULT_MODEL]
+DEFAULT_MODEL = "grok-imagine-video-1.5"
+MODELS = [DEFAULT_MODEL, "grok-imagine-1.0-video"]
 SUCCESS_STATUSES = {"completed", "complete", "success", "succeeded", "succeed", "done"}
 FAILED_STATUSES = {"failed", "failure", "error", "cancelled", "canceled", "cancel", "rejected"}
 
