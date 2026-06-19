@@ -26,11 +26,17 @@ $o = COMMAND 2>&1 | Out-String; $o.Substring(0, [Math]::Min($o.Length, 4000))
 - 不使用当前环境没有的 `head`。
 
 ## Git Push
-- 因网络原因，执行 `git push` 必须使用本机代理端口 `10808`。
+- 因网络原因，执行 `git push` 优先使用本机代理端口 `10808`；如果 `10808` 连接失败，改用 `7890`。
 - 默认 push 写法：
 
 ```powershell
 git -c http.proxy=http://127.0.0.1:10808 -c https.proxy=http://127.0.0.1:10808 push -u origin master
+```
+
+- 备用 push 写法：
+
+```powershell
+git -c http.proxy=http://127.0.0.1:7890 -c https.proxy=http://127.0.0.1:7890 push -u origin master
 ```
 
 - 只在用户明确要求时 push。
