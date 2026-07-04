@@ -19,12 +19,10 @@ from ..Sora2.kuai_utils import (
 
 
 NANO_BANANA_MODELS = [
-    "gemini-3.1-flash-image",
-    "gemini-3-pro-image",
-    "gemini-3.1-flash-lite",
-    "gemini-3.5-flash",
-    "gemini-3-flash-preview",
-    "gemini-2.5-flash",
+    "gemini-3-pro-image-preview",
+    "gemini-3.1-flash-image-preview",
+    "gemini-2.5-flash-image",
+    "gemini-2.5-flash-image-preview",
 ]
 
 
@@ -70,9 +68,9 @@ class NanoBananaAIO:
                 "image_6": ("IMAGE", {"tooltip": "参考图6"}),
                 "aspect_ratio": (["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"],
                                 {"default": "1:1", "tooltip": "图像宽高比"}),
-                "image_size": (["1K", "2K", "4K"], {"default": "2K", "tooltip": "图像尺寸,按模型能力生效"}),
+                "image_size": (["0.5K", "1K", "2K", "4K"], {"default": "1K", "tooltip": "图像尺寸,按模型能力生效"}),
                 "temperature": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.1, "tooltip": "生成温度"}),
-                "api_base": ("STRING", {"default": "https://api.kegeai.top", "tooltip": "API 端点地址"}),
+                "api_base": ("STRING", {"default": "https://ai.kegeai.top", "tooltip": "API 端点地址"}),
                 "api_key": ("STRING", {"default": "", "tooltip": "API 密钥"}),
                 "timeout": ("INT", {"default": 1800, "min": 60, "max": 9999, "tooltip": "超时时间(秒)"}),
             }
@@ -138,8 +136,8 @@ class NanoBananaAIO:
 
     def generate_unified(self, model_name, prompt, image_count=1, use_search=True, seed=0,
                         custom_model="", system_prompt="", image_1=None, image_2=None, image_3=None, image_4=None, image_5=None, image_6=None,
-                        aspect_ratio="1:1", image_size="2K", temperature=1.0,
-                        api_base="https://api.kegeai.top", api_key="", timeout=120):
+                        aspect_ratio="1:1", image_size="1K", temperature=1.0,
+                        api_base="https://ai.kegeai.top", api_key="", timeout=1800):
         """统一生成接口"""
         try:
             # 自定义模型覆盖下拉框选择
@@ -201,61 +199,40 @@ class NanoBananaAIO:
         endpoint = api_base.rstrip("/") + f"/v1beta/models/{model_name}:generateContent"
 
         # 构建 contents（Gemini API 格式）
-        contents = []
+        parts = [{"text": prompt.strip()}]
+        if system_prompt and system_prompt.strip():
+            parts[0]["text"] = f"{system_prompt.strip()}\n\n{prompt.strip()}"
 
         # 添加参考图像（如果有）
         for img_base64 in reference_images_base64:
-            contents.append({
+            parts.append({
                 "inline_data": {
                     "mime_type": "image/jpeg",
                     "data": img_base64
                 }
             })
 
-        # 添加文本提示词
-        contents.append({"text": prompt})
-
-        # 构建 generation_config
-        generation_config = {
-            "temperature": float(temperature),
-            "response_modalities": ["TEXT", "IMAGE"],
-            "seed": int(seed)
-        }
-
-        # 根据模型类型添加不同的配置
-        if model_name in ["gemini-3-pro-image-preview", "gemini-3.1-flash-image-preview"]:
-            # gemini-3-pro-image-preview / gemini-3.1-flash-image-preview: imageConfig 是 generationConfig 的子对象
-            generation_config["imageConfig"] = {
-                "aspectRatio": aspect_ratio,
-                "imageSize": image_size
-            }
-        elif model_name == "gemini-2.5-flash-image":
-            # gemini-2.5-flash-image: aspectRatio 直接在 imageConfig 中
-            generation_config["imageConfig"] = {
-                "aspectRatio": aspect_ratio
-            }
-
-        # 构建请求 payload（Gemini API 格式）
+        # 构建请求 payload（banana-t2m 文档格式）
         payload = {
-            "contents": [{"parts": contents}],
-            "generationConfig": generation_config
-        }
-
-        # 添加系统提示词（如果提供）
-        if system_prompt and system_prompt.strip():
-            payload["systemInstruction"] = {
-                "parts": [{"text": system_prompt.strip()}]
+            "contents": [{
+                "role": "user",
+                "parts": parts
+            }],
+            "generationConfig": {
+                "responseModalities": ["IMAGE"],
+                "imageConfig": {
+                    "aspectRatio": aspect_ratio,
+                    "imageSize": image_size
+                }
             }
-
-        # 如果启用搜索，添加 tools（仅 gemini-3-pro-image-preview / gemini-3.1-flash-image-preview 支持）
-        if use_search and model_name in ["gemini-3-pro-image-preview", "gemini-3.1-flash-image-preview"]:
-            payload["tools"] = [{"googleSearch": {}}]
+        }
 
         try:
             resp = requests.post(
                 endpoint,
-                headers=http_headers_json(api_key),
-                data=json.dumps(payload),
+                params={"key": api_key},
+                headers={"Accept": "application/json", "Content-Type": "application/json"},
+                json=payload,
                 timeout=int(timeout)
             )
             if resp.status_code >= 400:
