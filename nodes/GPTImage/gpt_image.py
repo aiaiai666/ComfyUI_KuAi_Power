@@ -163,9 +163,10 @@ class GPTImage2Generate:
             "optional": {
                 "custom_model": ("STRING", {"default": "", "tooltip": "自定义模型名（留空使用下拉模型）"}),
                 "api_base": ("STRING", {"default": "https://ai.kegeai.top", "tooltip": "API服务器地址"}),
+                "format": (FORMATS, {"default": "png", "tooltip": "输出格式（png、jpeg、webp）"}),
+                "quality": (QUALITY_OPTIONS, {"default": "auto", "tooltip": "图像质量（low、medium、high、auto）"}),
                 "timeout": ("INT", {"default": 1800, "min": 30, "max": 9999, "tooltip": "超时时间(秒)"}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "control_after_generate": True, "tooltip": "ComfyUI workflow random seed; refreshes each queued task and is not sent to the GPT Image 2 API."}),
-                "response_format": (RESPONSE_FORMATS, {"default": "url", "tooltip": "返回格式：url 或 b64_json"}),
             }
         }
 
@@ -180,8 +181,9 @@ class GPTImage2Generate:
             "custom_model": "自定义模型",
             "api_key": "API密钥",
             "api_base": "API地址",
+            "format": "输出格式（png/jpeg/webp）",
+            "quality": "图像质量（清晰度等级）",
             "timeout": "超时",
-            "response_format": "返回格式",
         }
 
     RETURN_TYPES = ("IMAGE", "STRING")
@@ -189,7 +191,7 @@ class GPTImage2Generate:
     FUNCTION = "generate"
     CATEGORY = "KuAi/GPTImage"
 
-    def generate(self, prompt, model, size, n, api_key, custom_model="", api_base="https://ai.kegeai.top", timeout=1800, seed=0, response_format="url"):
+    def generate(self, prompt, model, size, n, api_key, custom_model="", api_base="https://ai.kegeai.top", format="png", quality="auto", timeout=1800, seed=0, **kwargs):
         api_key = env_or(api_key, "KUAI_API_KEY")
         if not api_key:
             raise RuntimeError("API Key 未配置，请在节点参数或环境变量 KUAI_API_KEY 中设置")
@@ -197,7 +199,15 @@ class GPTImage2Generate:
             raise RuntimeError("提示词不能为空")
 
         effective_model = (custom_model or "").strip() or model
-        payload = {"model": effective_model, "prompt": prompt, "n": n, "size": SIZE_MAP.get(size, size), "response_format": response_format}
+        image_format = format
+        payload = {
+            "model": effective_model,
+            "prompt": prompt,
+            "n": n,
+            "size": SIZE_MAP.get(size, size),
+            "format": image_format,
+            "quality": quality,
+        }
         resp = requests.post(
             f"{api_base.rstrip('/')}/v1/images/generations",
             json=payload,
