@@ -92,6 +92,7 @@ SIZE_MAP = {
     "2160x3840（9:16｜4K竖版）": "2160x3840",
 }
 FORMATS = ["png", "jpeg", "webp"]
+RESPONSE_FORMATS = ["url", "b64_json"]
 QUALITY_OPTIONS = ["auto", "low", "medium", "high"]
 EDIT_IMAGE_URL_COUNT = 16
 
@@ -164,6 +165,7 @@ class GPTImage2Generate:
                 "api_base": ("STRING", {"default": "https://ai.kegeai.top", "tooltip": "API服务器地址"}),
                 "timeout": ("INT", {"default": 1800, "min": 30, "max": 9999, "tooltip": "超时时间(秒)"}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "control_after_generate": True, "tooltip": "ComfyUI workflow random seed; refreshes each queued task and is not sent to the GPT Image 2 API."}),
+                "response_format": (RESPONSE_FORMATS, {"default": "url", "tooltip": "返回格式：url 或 b64_json"}),
             }
         }
 
@@ -179,6 +181,7 @@ class GPTImage2Generate:
             "api_key": "API密钥",
             "api_base": "API地址",
             "timeout": "超时",
+            "response_format": "返回格式",
         }
 
     RETURN_TYPES = ("IMAGE", "STRING")
@@ -186,7 +189,7 @@ class GPTImage2Generate:
     FUNCTION = "generate"
     CATEGORY = "KuAi/GPTImage"
 
-    def generate(self, prompt, model, size, n, api_key, custom_model="", api_base="https://ai.kegeai.top", timeout=1800, seed=0):
+    def generate(self, prompt, model, size, n, api_key, custom_model="", api_base="https://ai.kegeai.top", timeout=1800, seed=0, response_format="url"):
         api_key = env_or(api_key, "KUAI_API_KEY")
         if not api_key:
             raise RuntimeError("API Key 未配置，请在节点参数或环境变量 KUAI_API_KEY 中设置")
@@ -194,7 +197,7 @@ class GPTImage2Generate:
             raise RuntimeError("提示词不能为空")
 
         effective_model = (custom_model or "").strip() or model
-        payload = {"model": effective_model, "prompt": prompt, "n": n, "size": SIZE_MAP.get(size, size)}
+        payload = {"model": effective_model, "prompt": prompt, "n": n, "size": SIZE_MAP.get(size, size), "response_format": response_format}
         resp = requests.post(
             f"{api_base.rstrip('/')}/v1/images/generations",
             json=payload,
@@ -233,6 +236,7 @@ class GPTImage2Edit:
                 "api_base": ("STRING", {"default": "https://ai.kegeai.top", "tooltip": "API服务器地址"}),
                 "timeout": ("INT", {"default": 1800, "min": 30, "max": 9999, "tooltip": "超时时间(秒)"}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "control_after_generate": True, "tooltip": "ComfyUI workflow random seed; refreshes each queued task and is not sent to the GPT Image 2 API."}),
+                "response_format": (RESPONSE_FORMATS, {"default": "url", "tooltip": "返回格式：url 或 b64_json"}),
             }
         }
 
@@ -253,6 +257,7 @@ class GPTImage2Edit:
             "api_base": "API地址",
             "timeout": "超时（秒）",
             "seed": "随机种子",
+            "response_format": "返回格式",
         }
 
     RETURN_TYPES = ("IMAGE", "STRING")
@@ -263,7 +268,7 @@ class GPTImage2Edit:
     def edit(self, image_url_1="", prompt="", model="gpt-image-2", custom_model="", size="auto（默认）", n=1, api_key="",
              image_url_2="", image_url_3="", image_url_4="",
              format="png", quality="auto", background="auto", moderation="auto",
-             api_base="https://ai.kegeai.top", timeout=1800, seed=0, **kwargs):
+             api_base="https://ai.kegeai.top", timeout=1800, seed=0, response_format="url", **kwargs):
         api_key = env_or(api_key, "KUAI_API_KEY")
         if not api_key:
             raise RuntimeError("API Key 未配置，请在节点参数或环境变量 KUAI_API_KEY 中设置")
@@ -295,6 +300,7 @@ class GPTImage2Edit:
             "quality": quality,
             "background": background,
             "moderation": moderation,
+            "response_format": response_format,
         }
 
         resp = requests.post(
