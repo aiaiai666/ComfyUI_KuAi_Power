@@ -1,5 +1,7 @@
 # Lessons
 
+- Grok-image 图片编辑接口报 `request Content-Type isn't multipart/form-data` 时，不能改成 JSON；应保持 multipart，并把图片 URL 下载后作为真实文件字段上传。
+
 - CSV 批处理需求里，若用户要求“对应的 csv 文件”，优先理解为写回原 CSV；不要默认生成新结果文件。
 - API Base 这类全局参数优先放节点输入，只有用户明确要求逐行差异时才放 CSV 列。
 - demo 工作流要体现用户指定的连接方式；用户说外部文本节点接入，就必须用文本节点连入对应参数。
