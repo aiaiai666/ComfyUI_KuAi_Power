@@ -54,8 +54,8 @@ class NanoBananaAIO:
                 "model_name": (model_list, {"default": model_list[0], "tooltip": "选择 Gemini 模型"}),
                 "prompt": ("STRING", {"multiline": True, "default": "A futuristic nano banana dish", "tooltip": "图像生成提示词"}),
                 "image_count": ("INT", {"default": 1, "min": 1, "max": 10, "step": 1, "tooltip": "生成图像数量"}),
-                "use_search": ("BOOLEAN", {"default": True, "tooltip": "启用网络搜索增强"}),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647, "tooltip": "随机种子值，0为随机（INT32范围）"}),
+                "use_search": ("BOOLEAN", {"default": False, "tooltip": "兼容旧工作流，当前接口文档未支持，实际不发送"}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647, "tooltip": "兼容旧工作流，当前接口文档未支持，实际不发送"}),
             },
             "optional": {
                 "custom_model": ("STRING", {"default": "", "tooltip": "自定义模型名称，非空时覆盖上方 model_name 下拉框的选择"}),
@@ -69,7 +69,7 @@ class NanoBananaAIO:
                 "aspect_ratio": (["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"],
                                 {"default": "1:1", "tooltip": "图像宽高比"}),
                 "image_size": (["0.5K", "1K", "2K", "4K"], {"default": "1K", "tooltip": "图像尺寸,按模型能力生效"}),
-                "temperature": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.1, "tooltip": "生成温度"}),
+                "temperature": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.1, "tooltip": "兼容旧工作流，当前接口文档未支持，实际不发送"}),
                 "api_base": ("STRING", {"default": "https://ai.kegeai.top", "tooltip": "API 端点地址"}),
                 "api_key": ("STRING", {"default": "", "tooltip": "API 密钥"}),
                 "timeout": ("INT", {"default": 1800, "min": 60, "max": 9999, "tooltip": "超时时间(秒)"}),
@@ -134,7 +134,7 @@ class NanoBananaAIO:
         print(f"\033[91m[NanoBanana] 错误: {message}\033[0m")
         return (torch.zeros(1, 64, 64, 3), "", "")
 
-    def generate_unified(self, model_name, prompt, image_count=1, use_search=True, seed=0,
+    def generate_unified(self, model_name, prompt, image_count=1, use_search=False, seed=0,
                         custom_model="", system_prompt="", image_1=None, image_2=None, image_3=None, image_4=None, image_5=None, image_6=None,
                         aspect_ratio="1:1", image_size="1K", temperature=1.0,
                         api_base="https://ai.kegeai.top", api_key="", timeout=1800):
@@ -152,17 +152,16 @@ class NanoBananaAIO:
                 return self._handle_error("图像数量必须在 1-10 之间")
 
             # 获取 API Key
+            api_key_text = str(api_key or "").strip()
+            if (
+                api_key_text in {"粘贴你的密钥到这里", "{{YOUR_API_KEY}}", "YOUR_API_KEY"}
+                or "密钥" in api_key_text
+                or (api_key_text and set(api_key_text) == {"?"})
+            ):
+                api_key = ""
             api_key = env_or(api_key, "KUAI_API_KEY")
             if not api_key:
                 return self._handle_error("未配置 API Key，请设置 KUAI_API_KEY 环境变量或在节点中填写")
-
-            # 处理种子值：0表示随机（INT32范围）
-            if seed == 0:
-                actual_seed = random.randint(1, 2147483647)
-                print(f"[NanoBanana] 使用随机种子: {actual_seed}")
-            else:
-                actual_seed = seed
-                print(f"[NanoBanana] 使用固定种子: {actual_seed}")
 
             # 准备参考图像（转换为 base64）
             reference_images_base64 = []
@@ -179,12 +178,12 @@ class NanoBananaAIO:
             if image_count == 1:
                 return self._generate_single_image(
                     api_base, api_key, model_name, prompt, system_prompt, reference_images_base64,
-                    aspect_ratio, image_size, temperature, use_search, actual_seed, timeout
+                    aspect_ratio, image_size, temperature, use_search, seed, timeout
                 )
             else:
                 return self._generate_multiple_images(
                     api_base, api_key, model_name, prompt, system_prompt, image_count, reference_images_base64,
-                    aspect_ratio, image_size, temperature, use_search, actual_seed, timeout
+                    aspect_ratio, image_size, temperature, use_search, seed, timeout
                 )
 
         except RuntimeError:
