@@ -229,7 +229,6 @@ class GPTImage2Edit:
                 "size": (SIZES, {"default": "auto（默认）", "tooltip": "输出图像尺寸（分辨率、比例与用途）"}),
                 "n": ("INT", {"default": 1, "min": 1, "max": 10, "tooltip": "生成数量（输出图片张数，1-10张）"}),
                 "api_key": ("STRING", {"default": "", "tooltip": "API密钥（留空使用环境变量 KUAI_API_KEY）"}),
-                "format": (FORMATS, {"default": "png", "tooltip": "输出格式（可选 png、jpeg、webp）"}),
                 "quality": (QUALITY_OPTIONS, {"default": "auto", "tooltip": "图像质量（可选 low、medium、high、auto）"}),
                 "background": (["auto", "transparent", "opaque"], {"default": "auto", "tooltip": "背景透明度（auto 自动、transparent 透明、opaque 不透明）"}),
                 "moderation": (["auto", "low"], {"default": "auto", "tooltip": "内容审核级别（auto 默认、low 较宽松）"}),
@@ -250,7 +249,6 @@ class GPTImage2Edit:
             "size": "图像尺寸（分辨率/比例）",
             "n": "生成数量（输出图片张数）",
             "api_key": "API密钥",
-            "format": "输出格式（png/jpeg/webp）",
             "quality": "图像质量（清晰度等级）",
             "background": "背景（透明/不透明）",
             "moderation": "内容审核（安全级别）",
@@ -267,7 +265,7 @@ class GPTImage2Edit:
 
     def edit(self, image_url_1="", prompt="", model="gpt-image-2", custom_model="", size="auto（默认）", n=1, api_key="",
              image_url_2="", image_url_3="", image_url_4="",
-             format="png", quality="auto", background="auto", moderation="auto",
+             quality="auto", background="auto", moderation="auto",
              api_base="https://ai.kegeai.top", timeout=1800, seed=0, response_format="url", **kwargs):
         api_key = env_or(api_key, "KUAI_API_KEY")
         if not api_key:
