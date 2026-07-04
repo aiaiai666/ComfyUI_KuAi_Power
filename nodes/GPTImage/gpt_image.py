@@ -296,7 +296,6 @@ class GPTImage2Edit:
             "prompt": prompt,
             "n": str(n),
             "size": SIZE_MAP.get(size, size),
-            "format": format,
             "quality": quality,
             "background": background,
             "moderation": moderation,
